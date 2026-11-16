@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ethical Guard — Симулятор етичних дилем</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        olive: {
+          100: "#e4e7d4",
+          200: "#d2d6b6",
+          300: "#b7be96",
+          400: "#97a16c",
+          500: "#7c8650",
+          600: "#606839",
+          700: "#4a512d",
+          800: "#33381f",
+          900: "#232716",
+          950: "#14170d"
+        }
+      },
+      fontFamily: {
+        sans: ["IBM Plex Sans", "Segoe UI", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
+        display: ["Barlow Condensed", "Arial Narrow", "sans-serif"]
+      }
+    }
+  }
+};
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    min-height: 100vh;
+    background-color: #09090b;
+    color: #e4e4e7;
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+  .option-card {
+    max-height: 42rem;
+    transition: max-height .45s ease, opacity .35s ease, transform .35s ease, border-color .2s ease, background-color .2s ease, margin .45s ease, padding .45s ease;
+  }
+  .option-card.is-out {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-8px);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .rise { animation: rise .4s ease; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .bar-fill { transition: width .6s ease; }
+  :focus-visible { outline: 2px solid #7c8650; outline-offset: 2px; }
+  ::selection { background: #4a512d; color: #fafafa; }
+</style>
+</head>
+<body>
+<div class="hidden border-olive-500 border-olive-600 border-olive-700 border-olive-800 bg-olive-500 bg-olive-800 bg-olive-900 bg-olive-950 text-olive-100 text-olive-200 text-olive-300 text-olive-400 hover:border-olive-500 hover:bg-olive-700 font-display"></div>
+<div id="app"></div>
+<script>
+(() => {
+  const BASE = 62;
+  const METRICS = [
+    { key: "integrity", label: "Доброчесність", short: "ДОБР", color: "#c2b280" },
+    { key: "trust", label: "Довіра та репутація", short: "ДОВІРА", color: "#8ea05a" },
+    { key: "effectiveness", label: "Ефективність", short: "ЕФЕКТ", color: "#d6a045" }
+  ];
+  const LIBRARY = [
+    {
+      code: "1700-VII",
+      title: "Закон України «Про запобігання корупції»",
+      text: "Рамка для рішень про подарунки, неправомірну вигоду і конфлікт інтересів, коли службовий вибір ще попереду або щойно зроблений.",
+      href: "https://zakon.rada.gov.ua/laws/show/1700-18"
+    },
+    {
+      code: "551-XIV",
+      title: "Дисциплінарний статут Збройних Сил України",
+      text: "Відповідальність за правдиве виконання обов’язків і за відомості, які впливають на службу, облік і довіру до доповіді.",
+      href: "https://zakon.rada.gov.ua/laws/show/551-14"
+    },
+    {
+      code: "548-XIV",
+      title: "Статут внутрішньої служби Збройних Сил України",
+      text: "Обов’язок сумлінно вести доручену справу, підтримувати достовірний облік і вчасно доповідати про обставини, що змінюють рішення командира.",
+      href: "https://zakon.rada.gov.ua/laws/show/548-14"
+    },
+    {
+      code: "GC IV",
+      title: "Женевські конвенції. Захист цивільного населення",
+      text: "Гуманітарна опора для розмови про цивільних осіб і їхнє майно під час навчань і застосування сили.",
+      href: "https://ihl-databases.icrc.org/en/ihl-treaties/gciv-1949"
+    },
+    {
+      code: "BI",
+      title: "NATO Building Integrity",
+      text: "Політика Альянсу щодо доброчесності оборонних інституцій: прозорість, підзвітність і стійкість до неналежного впливу.",
+      href: "https://www.nato.int/en/what-we-do/partnerships-and-cooperation/building-integrity"
+    }
+  ];
+  const BUILTIN_SCENARIOS = [
+    {
+      id: "eg-01",
+      code: "EG-01",
+      title: "Відомість, яку просять підписати",
+      field: "Облік і звітність",
+      summary: "До ранкової перевірки вас просять підтвердити готовність техніки, хоча журнал обслуговування і те, що ви бачили на майданчику, розходяться.",
+      norms: [
+        { title: "Дисциплінарний статут ЗСУ", href: "https://zakon.rada.gov.ua/laws/show/551-14" },
+        { title: "Статут внутрішньої служби ЗСУ", href: "https://zakon.rada.gov.ua/laws/show/548-14" }
+      ],
+      steps: [
+        {
+          id: "eg-01-a",
+          prompt: "До вечірньої доповіді лишається двадцять хвилин. Командир відділення кладе перед вами відомість: обидві машини позначені готовими до виходу. Вдень ви бачили, що на одній не закрито повторне обслуговування гальмівної системи, а запис у журналі обірваний. Командир каже тихо: «Підпиши. Перевірка о сьомій, уночі закриємо. Якщо зараз піднімеш це вище, знімуть допуск усьому відділенню».",
+          options: [
+            {
+              id: "a",
+              title: "Підписати відомість як є",
+              text: "Поставити підпис, щоб відділення залишилось у графіку перевірки, і розраховувати на нічний ремонт.",
+              badges: ["Темп збережено", "Запис розходиться з фактом"],
+              deltas: { integrity: -16, trust: -8, effectiveness: 8 },
+              analysis: "Підпис переносить на вас відповідальність за документ, який суперечить побаченому. Відділення лишається в ранковому графіку. Якщо несправність проявиться пізніше, слід уже веде до тих, хто підтвердив готовність.",
+              legal: "Дисциплінарний статут Збройних Сил України вимагає сумлінного виконання обов’язків. Відомість про готовність є службовим документом: підпис підтверджує, що ви вважаєте запис достовірним."
+            },
+            {
+              id: "b",
+              title: "Не підписувати і доповісти командиру роти",
+              text: "Повернути відомість і коротко, за підпорядкованістю, доповісти фактичний стан машини та журналу.",
+              badges: ["Факт зафіксовано", "Графік під тиском"],
+              deltas: { integrity: 14, trust: 12, effectiveness: -6 },
+              analysis: "Доповідь прямому начальнику виводить розбіжність із приватної розмови. Перевірка може стати щільнішою, зате рішення про допуск техніки ухвалює той, хто має повноваження і повну картину.",
+              legal: "Статут внутрішньої служби Збройних Сил України покладає обов’язок своєчасно доповідати про обставини, які заважають справному виконанню завдання. Приховування несправності позбавляє командира можливості керувати ризиком."
+            },
+            {
+              id: "c",
+              title: "Підписати після усної обіцянки",
+              text: "Взяти слово командира, що ремонт закриють до світанку, і підписати відомість без окремого запису.",
+              badges: ["Усна домовленість", "Слабкий слід"],
+              deltas: { integrity: -10, trust: -6, effectiveness: 3 },
+              analysis: "Обіцянка без запису не виправляє відомість. Документ лишається неправдивим на момент підпису, а хід домовленості важко відновити, якщо ремонт не встигнуть.",
+              legal: "Усне запевнення не замінює достовірний облік. Відповідальність прив’язується до змісту підписаного документа на час підпису, а не до наміру виправити його пізніше."
+            }
+          ]
+        },
+        {
+          id: "eg-01-b",
+          prompt: "О 06:40 група перевірки просить короткий коментар щодо журналу обслуговування. Колега, який чергував уночі, стоїть поруч і тихо просить сказати, що сторінку зіпсувала волога і її переписали з пам’яті. Інакше, каже він, опитуватимуть усіх і відділення затримають на майданчику.",
+          options: [
+            {
+              id: "a",
+              title: "Повторити версію про зіпсовану сторінку",
+              text: "Підтримати пояснення чергового і не згадувати незакрите обслуговування.",
+              badges: ["Єдина версія", "Ризик для довіри"],
+              deltas: { integrity: -14, trust: -12, effectiveness: 6 },
+              analysis: "Спільна зручна версія виграє хвилини на майданчику і одночасно робить вас учасником пояснення, яке ви не можете підтвердити. Якщо група звірить журнал із фактичним станом, під удар потрапляє вже не один запис, а слова кількох людей.",
+              legal: "Пояснення перевіряючим є продовженням службової доповіді. Дисциплінарний статут ЗСУ не відділяє усну відповідь від обов’язку повідомляти достовірні відомості."
+            },
+            {
+              id: "b",
+              title: "Назвати побачене і показати свій запис",
+              text: "Сказати, що вдень обслуговування було незакрите, і запропонувати звірити це з журналом.",
+              badges: ["Звірка з фактом", "Час на розбір"],
+              deltas: { integrity: 12, trust: 10, effectiveness: -8 },
+              analysis: "Ви віддаєте групі те, що самі спостерігали, і не добудовуєте чужу версію. Розбір займе час. Натомість рішення про допуск спирається на стан машини, а не на узгоджену легенду.",
+              legal: "Статут внутрішньої служби вимагає сумлінно вести доручену справу. Той, хто має пряме спостереження, доповідає його зміст, навіть якщо це ускладнює графік перевірки."
+            },
+            {
+              id: "c",
+              title: "Сказати, що деталей журналу не пам’ятаєте",
+              text: "Уникнути і прямої неправди, і підтвердження факту, пославшись на неповну пам’ять.",
+              badges: ["Нейтральна пауза", "Факт лишається в тіні"],
+              deltas: { integrity: -4, trust: -6, effectiveness: 1 },
+              analysis: "Відповідь не додає вигаданої сторінки, але й не передає відомий вам факт. Пауза захищає від прямої неправди лише наполовину: перевірка далі працює з неповною картиною, хоча ви могли її доповнити.",
+              legal: "Обов’язок доповіді стосується істотних обставин, які вам відомі. Посилання на непам’ять там, де спостереження було конкретним, послаблює і облік, і довіру до наступних відповідей."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: "eg-02",
+      code: "EG-02",
+      title: "Пакет після робочої зустрічі",
+      field: "Закупівлі",
+      summary: "Представник постачальника лишає закритий пакет «для потреб підрозділу» після того, як ви вплинули на коло учасників закупівлі.",
+      norms: [
+        { title: "Закон України «Про запобігання корупції»", href: "https://zakon.rada.gov.ua/laws/show/1700-18" },
+        { title: "NATO Building Integrity", href: "https://www.nato.int/en/what-we-do/partnerships-and-cooperation/building-integrity" }
+      ],
+      steps: [
+        {
+          id: "eg-02-a",
+          prompt: "Учора ви рекомендували залишити в конкурсі двох постачальників формулярів для майстерні. Сьогодні черговий КПП передає закритий пакет: представник одного з них сказав, що це «для потреб підрозділу до свята» і що рахунку немає. Черговий питає, куди подіти пакет, доки ви не пішли на наступну нараду.",
+          options: [
+            {
+              id: "a",
+              title: "Прийняти пакет у каптерку",
+              text: "Оформити це як допомогу підрозділу і передати матеріальному відповідальному без імені дарувальника.",
+              badges: ["Швидко закрито", "Зв’язок із конкурсом"],
+              deltas: { integrity: -16, trust: -10, effectiveness: 4 },
+              analysis: "Пакет з’являється одразу після вашої рекомендації в конкурсі. Навіть якщо всередині побутові речі, сам факт передачі пов’язує службове рішення з вигодою. Запис без дарувальника лише прибирає слід.",
+              legal: "Закон України «Про запобігання корупції» обмежує подарунки і забороняє приймати неправомірну вигоду, пов’язану зі службовою діяльністю. Перейменування пакета на «допомогу підрозділу» не змінює підстави передачі."
+            },
+            {
+              id: "b",
+              title: "Відмовити і зафіксувати спробу",
+              text: "Не приймати пакет, доповісти командиру і лишити короткий запис: хто, коли і з яким формулюванням його приніс.",
+              badges: ["Слід збережено", "Конкурс захищено"],
+              deltas: { integrity: 16, trust: 12, effectiveness: -3 },
+              analysis: "Відмова розриває зв’язок між вашою рекомендацією і подякою постачальника. Короткий запис дає командиру і тим, хто супроводжує закупівлю, факт, а не чутку. Нарада почнеться пізніше на кілька хвилин.",
+              legal: "Закон України «Про запобігання корупції» вимагає відмежовувати службові рішення від вигоди з боку учасників процедур. Фіксація спроби передачі є способом захистити і вас, і конкурс, а не особистим жестом недовіри."
+            },
+            {
+              id: "c",
+              title: "Роздати вміст людям без запису",
+              text: "Прийняти пакет, щоб «не ображати», і того ж дня розділити речі між особовим складом.",
+              badges: ["Жест для людей", "Облік відсутній"],
+              deltas: { integrity: -12, trust: -4, effectiveness: 2 },
+              analysis: "Розподіл між людьми змінює адресата, але не підставу. Підрозділ отримує річ від сторони, зацікавленої в конкурсі, а відновити, що саме і чому надійшло, буде неможливо.",
+              legal: "Обмеження щодо подарунків не зникає, якщо вигода дістається колективу, а не одній особі. Службове рішення і подяка учасника процедури мають бути розведені записом і відмовою."
+            }
+          ]
+        },
+        {
+          id: "eg-02-b",
+          prompt: "Перед підписом уточненої специфікації той самий представник пише вам у службовий месенджер: «Бачу, що ми розуміємо одне одного. Специфікацію можете закривати сьогодні». Поруч у треді є ваш колега з робочої групи, який ще не бачив цього речення.",
+          options: [
+            {
+              id: "a",
+              title: "Відповісти нейтрально і закрити специфікацію",
+              text: "Написати «прийнято» і завершити документ у запланований день.",
+              badges: ["Графік утримано", "Натяк лишається"],
+              deltas: { integrity: -12, trust: -10, effectiveness: 7 },
+              analysis: "Коротка відповідь виглядає діловою, але фіксує вас у розмові, де постачальник прив’язує документ до «взаєморозуміння». Специфікація закриється вчасно, а контекст повідомлення залишиться в переписці.",
+              legal: "Навіть без прямого прохання про перевагу таке повідомлення створює видимість домовленості. Закон про запобігання корупції і підхід Building Integrity вимагають прибрати цю видимість до рішення, а не після нього."
+            },
+            {
+              id: "b",
+              title: "Не відповідати по суті і передати переписку командиру",
+              text: "Зупинити особисту відповідь, показати повідомлення керівнику робочої групи і просити визначити, хто далі веде контакт.",
+              badges: ["Контакт розведено", "Рішення сповільнене"],
+              deltas: { integrity: 14, trust: 11, effectiveness: -5 },
+              analysis: "Ви не підтверджуєте натяк і не лишаєте контакт наодинці. Підпис специфікації зсунеться, доки керівник не вирішить, чи потрібна заміна особи в комунікації. Процедура залишається захищеною.",
+              legal: "Доброчесність процедури тримається на тому, хто і на якій підставі спілкується з учасником. NATO Building Integrity розглядає саме такі точки впливу як ризик для довіри до оборонної установи."
+            },
+            {
+              id: "c",
+              title: "Уточнити в відповіді, що пакету не було",
+              text: "Написати представнику, що ніяких домовленостей немає, і все одно підписати специфікацію сьогодні.",
+              badges: ["Публічна дистанція", "Підпис того ж дня"],
+              deltas: { integrity: 2, trust: -2, effectiveness: 4 },
+              analysis: "Пряма фраза створює корисний слід у треді, якщо її бачать інші. Підпис того самого дня все одно лишає сумнів: слова і темп рішення розходяться. Краще, ніж мовчазне «прийнято», але керівник досі не керує контактом.",
+              legal: "Письмова відмова від «взаєморозуміння» доречна. Якщо після неї ви самі закриваєте документ без передачі епізоду керівнику, розведення інтересу лишається неповним."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: "eg-03",
+      code: "EG-03",
+      title: "Огорожа після навчання",
+      field: "Взаємодія з цивільними",
+      summary: "Під час польового заняття машина пошкодила цивільну огорожу. Пропонують не вносити це в підсумкову записку, бо колона має повернутися до темряви.",
+      norms: [
+        { title: "Статут внутрішньої служби ЗСУ", href: "https://zakon.rada.gov.ua/laws/show/548-14" },
+        { title: "IV Женевська конвенція", href: "https://ihl-databases.icrc.org/en/ihl-treaties/gciv-1949" }
+      ],
+      steps: [
+        {
+          id: "eg-03-a",
+          prompt: "На зворотному маршруті навчальна машина зачепила огорожу приватного подвір’я. Господаря поруч немає. Заступник командира пропонує не включати епізод у підсумкову записку: скарга ще не надійшла, світла лишається мало, а колона має бути в пункті до темряви. Вас просять погодити коротку записку без цього абзацу.",
+          options: [
+            {
+              id: "a",
+              title: "Погодити записку без епізоду",
+              text: "Прибрати згадку про огорожу, щоб колона не зупинялась на додатковому розборі.",
+              badges: ["Повернення в строк", "Подія без сліду"],
+              deltas: { integrity: -15, trust: -11, effectiveness: 9 },
+              analysis: "Колона виграє час, а підрозділ втрачає власний запис про шкоду цивільному майну. Якщо господар з’явиться ввечері, доведеться відновлювати подію з пам’яті і під тиском, уже без свіжого огляду.",
+              legal: "Статут внутрішньої служби вимагає достовірно доповідати про наслідки виконання завдання. Пошкодження цивільного майна на навчанні є такою обставиною, навіть до появи скарги."
+            },
+            {
+              id: "b",
+              title: "Внести факт, місце і спосіб зв’язку",
+              text: "Лишити в записці час, ділянку маршруту і пропозицію, як господар може звернутися після повернення колони.",
+              badges: ["Факт у записці", "Маршрут довший"],
+              deltas: { integrity: 14, trust: 13, effectiveness: -7 },
+              analysis: "Записка фіксує подію, поки деталі свіжі, і дає командиру підставу вирішити ремонт або компенсацію в установленому порядку. Повернення зсувається. Довіра людей, які живуть біля полігона, отримує конкретний канал, а не обіцянку «розібратись, якщо запитають».",
+              legal: "IV Женевська конвенція закріплює повагу до цивільного населення і цивільного майна. Навчальний епізод не скасовує обов’язок обліку шкоди і доповіді за підпорядкованістю."
+            },
+            {
+              id: "c",
+              title: "Сказати лише механіку-водію",
+              text: "Не писати в записку і попросити водія самому знайти господаря наступного дня.",
+              badges: ["Без паперів", "Відповідальність розмита"],
+              deltas: { integrity: -8, trust: -7, effectiveness: 2 },
+              analysis: "Усне доручення водію виглядає по-людськи, але знімає епізод із рішення командира. Завтра водій може не знайти адресу, а підрозділ уже не матиме службового сліду.",
+              legal: "Індивідуальна обіцянка не замінює службовий облік. Командир має знати про шкоду цивільному майну, щоб визначити порядок її усунення, а не покладатися на приватну домовленість."
+            }
+          ]
+        },
+        {
+          id: "eg-03-b",
+          prompt: "Увечері на КПП приходить власник подвір’я і питає чергового, чи була сьогодні машина на ґрунтовій дорозі біля його огорожі. Черговий кличе вас: ви бачили епізод. Власник спокійний і просить лише зрозуміти, до кого звертатися.",
+          options: [
+            {
+              id: "a",
+              title: "Сказати, що таких даних немає",
+              text: "Відповісти, що підтвердити подію не можете, і запропонувати прийти іншим днем.",
+              badges: ["КПП без черги", "Довіра підірвана"],
+              deltas: { integrity: -16, trust: -14, effectiveness: 3 },
+              analysis: "Коротка відмова закриває розмову на КПП і одночасно суперечить тому, що ви бачили. Власник піде з відчуттям, що підрозділ ховається. Наступна розмова, якщо вона почнеться через скаргу, стартуватиме з цієї відмови.",
+              legal: "Відповідь цивільній особі на КПП не є приватним коментарем. Повідомлення неправдивих відомостей про відомий вам епізод конфліктує і зі статутним обов’язком достовірної доповіді, і з повагою до цивільного майна."
+            },
+            {
+              id: "b",
+              title: "Підтвердити епізод і назвати порядок звернення",
+              text: "Сказати, що пошкодження було під час навчання, і провести людину до того, хто приймає звернення.",
+              badges: ["Ясний маршрут", "Час чергового"],
+              deltas: { integrity: 13, trust: 14, effectiveness: -4 },
+              analysis: "Ви визнаєте факт у межах того, що спостерігали, і не обіцяєте від себе компенсацію. Людина отримує двері, а не відписку. Чергування стає довшим, рішення про відшкодування лишається в передбаченому порядку.",
+              legal: "Повага до цивільного майна включає зрозумілий шлях повідомити про шкоду. Статут внутрішньої служби підтримує передачу такого звернення за підпорядкованістю, а не його гасіння на вході."
+            },
+            {
+              id: "c",
+              title: "Попросити зайти завтра до командира",
+              text: "Не підтверджувати і не заперечувати, а назвати годину прийому командира.",
+              badges: ["Пауза до ранку", "Факт не названо"],
+              deltas: { integrity: -2, trust: -3, effectiveness: 1 },
+              analysis: "Ви не вигадуєте відсутність події і даєте офіційну годину. Водночас людина йде без відповіді на пряме питання, хоча відповідь у вас є. До ранку розповіді про КПП вже житимуть окремо від журналу.",
+              legal: "Направлення до командира доречне для рішення по суті. Воно не замінює чесну відповідь на питання, чи подія була, якщо ви є свідком і вас питають саме про це."
+            }
+          ]
+        }
+      ]
+    }
+  ];
+
+  const ScenarioLoader = {
+    endpoint: "./scenarios.json",
+    pack: null,
+    origin: "builtin",
+    normalize(payload) {
+      const list = Array.isArray(payload) ? payload : payload && Array.isArray(payload.scenarios) ? payload.scenarios : null;
+      if (!list) {
+        throw new Error("shape");
+      }
+      return list.filter((item) => item && item.id && item.title).map((item) => ({
+        id: String(item.id),
+        code: String(item.code || item.id),
+        title: String(item.title),
+        field: String(item.field || "Загальний модуль"),
+        summary: String(item.summary || ""),
+        norms: Array.isArray(item.norms) ? item.norms : [],
+        steps: Array.isArray(item.steps) ? item.steps : []
+      }));
+    },
+    builtin() {
+      return BUILTIN_SCENARIOS;
+    },
+    async load(url) {
+      const target = url || this.endpoint;
+      const response = await fetch(target, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+      const payload = await response.json();
+      const pack = this.normalize(payload);
+      if (!pack.length) {
+        throw new Error("empty");
+      }
+      this.pack = pack;
+      this.origin = target;
+      return pack;
+    }
+  };
+
+  const state = {
+    screen: "dashboard",
+    scenarios: ScenarioLoader.builtin(),
+    loadNote: "Показано вбудований набір. Кнопка нижче читає зовнішній scenarios.json, коли файл з’явиться поруч.",
+    loading: false,
+    scenarioId: null,
+    stepIndex: 0,
+    scores: { integrity: BASE, trust: BASE, effectiveness: BASE },
+    history: [],
+    lockedOption: null,
+    revealed: false,
+    finished: false,
+    room: null,
+    admitted: false,
+    joinError: "",
+    listenerVote: null,
+    joinDraft: null,
+    distribution: null,
+    copyNote: ""
+  };
+
+  function esc(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function clamp(value) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  function signed(value) {
+    const number = Number(value) || 0;
+    return number > 0 ? `+${number}` : String(number);
+  }
+
+  function freshScores() {
+    return { integrity: BASE, trust: BASE, effectiveness: BASE };
+  }
+
+  function resetRun() {
+    state.stepIndex = 0;
+    state.scores = freshScores();
+    state.history = [];
+    state.lockedOption = null;
+    state.revealed = false;
+    state.finished = false;
+  }
+
+  function currentScenario() {
+    return state.scenarios.find((item) => item.id === state.scenarioId) || null;
+  }
+
+  function currentStep() {
+    const scenario = currentScenario();
+    if (!scenario || !Array.isArray(scenario.steps)) return null;
+    return scenario.steps[state.stepIndex] || null;
+  }
+
+  function normTitle(norm) {
+    return typeof norm === "string" ? norm : norm && norm.title ? norm.title : "";
+  }
+
+  function normHref(norm) {
+    return typeof norm === "string" ? "" : norm && norm.href ? norm.href : "";
+  }
+
+  function toneClass(value) {
+    if (value > 0) return "text-emerald-400";
+    if (value < 0) return "text-amber-400";
+    return "text-zinc-500";
+  }
+
+  function metricChips(deltas) {
+    return METRICS.map((metric) => {
+      const value = Number(deltas[metric.key] || 0);
+      return `<span class="font-mono text-xs ${toneClass(value)}">${esc(metric.short)} ${esc(signed(value))}</span>`;
+    }).join('<span class="text-zinc-700">/</span>');
+  }
+
+  function gauge(metric, large) {
+    const value = clamp(state.scores[metric.key]);
+    const degree = Math.round(value * 3.6);
+    const box = large ? "h-28 w-28" : "h-[4.25rem] w-[4.25rem]";
+    const inset = large ? "8px" : "5px";
+    const num = large ? "text-3xl" : "text-sm";
+    return `
+      <div class="flex items-center gap-3">
+        <div class="relative ${box} shrink-0" aria-hidden="true">
+          <div class="absolute inset-0 rounded-full" style="background:conic-gradient(${metric.color} ${degree}deg, #3f3f46 0deg)"></div>
+          <div class="absolute flex items-center justify-center rounded-full bg-zinc-950" style="inset:${inset}">
+            <span class="font-mono ${num} text-zinc-100">${value}</span>
+          </div>
+        </div>
+        <div>
+          <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">${esc(metric.short)}</p>
+          <p class="text-sm text-zinc-200">${esc(metric.label)}</p>
+        </div>
+      </div>`;
+  }
+
+  function posture(scores) {
+    const lines = [];
+    if (scores.integrity >= 74) lines.push("Доброчесність утримана високо: записи і слова лишилися близькими до фактів.");
+    else if (scores.integrity >= 50) lines.push("Доброчесність у робочому діапазоні. Окремі кроки залишили відстань між документом і тим, що було видно.");
+    else lines.push("Доброчесність просіла. Кілька рішень надали перевагу короткому спокою перед точним записом.");
+    if (scores.trust >= 74) lines.push("Довіра посилюється там, де підрозділ і цивільні чують ту саму версію, що стоїть у документі.");
+    else if (scores.trust >= 50) lines.push("Репутація лишається робочою. Окремі відповіді без сліду зробили її тоншою.");
+    else lines.push("Довіра знизилась. Наступній доповіді буде важче, бо попередні вже розійшлися з фактом.");
+    if (scores.effectiveness >= 74) lines.push("Ефективність висока. Поруч варто тримати питання, якою ціною втримано темп.");
+    else if (scores.effectiveness >= 50) lines.push("Ефективність збережена в прийнятних межах для навчального проходження.");
+    else lines.push("Темп просів. У цьому проході це наслідок прозорості, а не характеристика людини.");
+    return lines;
+  }
+
+  function optionCard(option, index, mode) {
+    const selected = mode === "solo" ? state.revealed && state.lockedOption === option.id : state.listenerVote === option.id;
+    const collapsed = mode === "solo" ? state.revealed && !selected : Boolean(state.listenerVote) && !selected;
+    const badges = (option.badges || []).map((badge) => `<span class="border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">${esc(badge)}</span>`).join("");
+    return `
+      <button type="button" data-action="${mode === "solo" ? "choose" : "listener"}" data-id="${esc(option.id)}" aria-pressed="${selected ? "true" : "false"}" ${collapsed ? 'tabindex="-1" aria-hidden="true"' : ""} class="option-card group w-full border px-4 py-4 text-left sm:px-5 ${collapsed ? "is-out" : ""} ${selected ? "border-olive-500 bg-zinc-900" : "border-zinc-700 bg-zinc-900/80 hover:border-olive-500"}">
+        <span class="flex items-start justify-between gap-3">
+          <span class="font-mono text-xs text-olive-400">${String(index + 1).padStart(2, "0")}</span>
+          <span class="flex flex-1 flex-wrap justify-end gap-2">${badges}</span>
+        </span>
+        <span class="mt-3 block font-display text-2xl tracking-wide text-zinc-50">${esc(option.title)}</span>
+        <span class="mt-2 block text-sm leading-6 text-zinc-400">${esc(option.text || "")}</span>
+      </button>`;
+  }
+
+  function qrMarkup(code) {
+    const size = 21;
+    let seed = 2166136261;
+    for (let index = 0; index < code.length; index += 1) {
+      seed ^= code.charCodeAt(index);
+      seed = Math.imul(seed, 16777619);
+    }
+    const bit = () => {
+      seed = Math.imul(seed, 1664525) + 1013904223;
+      return (seed >>> 24) & 1;
+    };
+    const finder = (x, y) => {
+      const boxes = [[0, 0], [14, 0], [0, 14]];
+      for (const [ox, oy] of boxes) {
+        if (x >= ox && x < ox + 7 && y >= oy && y < oy + 7) {
+          const lx = x - ox;
+          const ly = y - oy;
+          const edge = lx === 0 || ly === 0 || lx === 6 || ly === 6;
+          const core = lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4;
+          return edge || core;
+        }
+      }
+      return null;
+    };
+    let rects = "";
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const mark = finder(x, y);
+        const on = mark === null ? bit() === 1 : mark;
+        if (on) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="#18181b"></rect>`;
+      }
+    }
+    return `<svg viewBox="0 0 21 21" class="h-40 w-40" role="img" aria-label="Навчальне зображення QR">${rects}</svg>`;
+  }
+
+  function makeCode() {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    let code = "";
+    bytes.forEach((byte) => {
+      code += alphabet[byte % alphabet.length];
+    });
+    return code;
+  }
+
+  function buildDistribution(options, pickedId, includeListener) {
+    const weights = options.map((option, index) => {
+      let weight = 3 + ((option.title.length + index * 5) % 4);
+      if (option.id === pickedId) weight += 4;
+      return weight;
+    });
+    const audience = 17;
+    const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+    const counts = weights.map((weight) => Math.max(1, Math.round((weight / weightSum) * audience)));
+    counts[counts.length - 1] = Math.max(0, counts[counts.length - 1] + audience - counts.reduce((sum, count) => sum + count, 0));
+    if (includeListener) {
+      const index = Math.max(0, options.findIndex((option) => option.id === pickedId));
+      counts[index] += 1;
+    }
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    const rows = options.map((option, index) => ({
+      id: option.id,
+      title: option.title,
+      count: counts[index],
+      pct: Math.round((counts[index] / total) * 100),
+      yours: includeListener && option.id === pickedId
+    }));
+    rows[rows.length - 1].pct += 100 - rows.reduce((sum, row) => sum + row.pct, 0);
+    return rows;
+  }
+
+  function ensureDistribution() {
+    if (!state.room) return [];
+    const scenario = state.scenarios.find((item) => item.id === state.room.scenarioId);
+    if (!scenario || !scenario.steps || !scenario.steps[0]) return [];
+    const options = scenario.steps[0].options || [];
+    if (!state.distribution) {
+      const picked = state.listenerVote || (options[0] && options[0].id) || "a";
+      state.distribution = buildDistribution(options, picked, Boolean(state.listenerVote));
+    }
+    return state.distribution;
+  }
+
+  function shell(content) {
+    return `
+      <div class="min-h-screen">
+        <div class="border-b border-olive-800 bg-olive-950">
+          <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-olive-300 sm:px-6">
+            <span>EG-TRN · навчальний контур</span>
+            <span class="hidden sm:inline">Симулятор етичних дилем</span>
+          </div>
+        </div>
+        <header class="border-b border-zinc-800 bg-zinc-950/90">
+          <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+            <button type="button" data-action="goto" data-screen="dashboard" class="flex items-center gap-3 text-left">
+              <span class="grid h-9 w-9 place-items-center border border-olive-700 bg-olive-950 font-mono text-[11px] text-olive-300">EG</span>
+              <span>
+                <span class="block font-display text-xl tracking-[0.18em] text-zinc-100">ETHICAL GUARD</span>
+                <span class="block font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Тактичний тренажер рішень</span>
+              </span>
+            </button>
+            <nav class="flex items-center gap-2">
+              <button type="button" data-action="goto" data-screen="library" class="hidden border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400 hover:border-olive-500 sm:inline-block">Норми</button>
+              <button type="button" data-action="goto" data-screen="cases" class="border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400 hover:border-olive-500">Кейси</button>
+            </nav>
+          </div>
+        </header>
+        <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">${content}</main>
+        <footer class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 pb-8 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-600 sm:px-6">
+          <span>Ethical Guard · прототип</span>
+          <span>Шкали 0–100 · старт ${BASE}</span>
+        </footer>
+      </div>`;
+  }
+
+  function viewDashboard() {
+    const modes = [
+      ["cases", "01", "Самостійний тренажер", "Особисте проходження кейса. Після кожного кроку оновлюються доброчесність, довіра та репутація, ефективність."],
+      ["teacher", "02", "Групове заняття (Режим викладача)", "Створення кімнати, навчальне зображення QR і анонімний вхід слухача з діаграмою розподілу."],
+      ["library", "03", "Бібліотека кейсів та норм", "Стандарти, на які спирається розбір: статути, антикорупційне законодавство, гуманітарне право, Building Integrity."]
+    ];
+    const buttons = modes.map(([screen, index, title, text]) => `
+      <button type="button" data-action="goto" data-screen="${screen}" class="group flex w-full items-stretch border border-zinc-800 bg-zinc-900/80 text-left hover:border-olive-500">
+        <span class="grid w-14 shrink-0 place-items-center border-r border-zinc-800 font-mono text-sm text-olive-400 sm:w-20">${index}</span>
+        <span class="flex flex-1 flex-col gap-1 px-4 py-5 sm:px-6">
+          <span class="font-display text-[1.7rem] leading-none tracking-[0.04em] text-zinc-50 sm:text-3xl">${title}</span>
+          <span class="max-w-3xl text-sm leading-6 text-zinc-400">${text}</span>
+        </span>
+      </button>`).join("");
+    return `
+      <section class="max-w-3xl">
+        <p class="font-mono text-[11px] uppercase tracking-[0.22em] text-olive-400">Місія системи</p>
+        <h1 class="mt-3 font-display text-5xl leading-none tracking-wide text-zinc-50 sm:text-6xl">Симулятор етичних дилем</h1>
+        <p class="mt-5 text-base leading-7 text-zinc-300">Ethical Guard тренує вибір там, де службовий темп, довіра людей і вимога норми розходяться. Тренажер показує ціну кроку і правову опору рішення. Підсумкові шкали лишаються робочим дзеркалом проходження.</p>
+      </section>
+      <div class="mt-8 flex flex-col gap-3">${buttons}</div>`;
+  }
+
+  function viewLibrary() {
+    const cards = LIBRARY.map((item) => `
+      <article class="border border-zinc-800 bg-zinc-900/70 p-5">
+        <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-400">${esc(item.code)}</p>
+        <h2 class="mt-2 font-display text-2xl tracking-wide text-zinc-50">${esc(item.title)}</h2>
+        <p class="mt-3 text-sm leading-6 text-zinc-400">${esc(item.text)}</p>
+        <a class="mt-4 inline-flex font-mono text-[11px] uppercase tracking-[0.16em] text-amber-500/90 underline decoration-zinc-700 underline-offset-4 hover:text-amber-400" href="${esc(item.href)}" target="_blank" rel="noopener noreferrer">Відкрити джерело</a>
+      </article>`).join("");
+    return `
+      <div class="flex items-end justify-between gap-4">
+        <div>
+          <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Довідник</p>
+          <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Бібліотека кейсів та норм</h1>
+        </div>
+        <button type="button" data-action="goto" data-screen="dashboard" class="shrink-0 border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
+      </div>
+      <p class="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Тут зібрані рамки, на які тренажер спирається в розборі. Посилання ведуть до офіційних текстів. У самому проходженні норми подані як орієнтир рішення, без підміни юридичного висновку.</p>
+      <div class="mt-6 grid gap-3 lg:grid-cols-2">${cards}</div>`;
+  }
+
+  function viewCases() {
+    const resume = state.scenarioId && !state.finished && (state.stepIndex > 0 || state.revealed);
+    const scenario = currentScenario();
+    const resumeBlock = resume && scenario ? `
+      <div class="mt-5 flex flex-col gap-3 border border-olive-800 bg-olive-950 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-olive-100">Незавершене проходження: ${esc(scenario.code)} · ${esc(scenario.title)}</p>
+        <button type="button" data-action="resume" class="border border-olive-600 bg-olive-800 px-4 py-2 font-display text-lg tracking-[0.12em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Повернутися до кроку</button>
+      </div>` : "";
+    const cards = state.scenarios.map((item) => `
+      <article class="flex flex-col border border-zinc-800 bg-zinc-900/75 p-5">
+        <div class="flex items-center justify-between gap-3">
+          <p class="font-mono text-xs text-olive-400">${esc(item.code)}</p>
+          <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">${esc(item.field)}</p>
+        </div>
+        <h2 class="mt-3 font-display text-3xl leading-none tracking-wide text-zinc-50">${esc(item.title)}</h2>
+        <p class="mt-3 flex-1 text-sm leading-6 text-zinc-400">${esc(item.summary)}</p>
+        <p class="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Кроків: ${Array.isArray(item.steps) ? item.steps.length : 0}</p>
+        <button type="button" data-action="open" data-id="${esc(item.id)}" class="mt-4 border border-olive-700 bg-olive-950 px-4 py-3 text-left font-display text-xl tracking-[0.08em] text-olive-100 hover:border-olive-500">Почати проходження</button>
+      </article>`).join("");
+    return `
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Самостійний тренажер</p>
+          <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Вибір кейса</h1>
+        </div>
+        <button type="button" data-action="goto" data-screen="dashboard" class="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
+      </div>
+      <div class="mt-5 flex flex-col gap-3 border border-dashed border-zinc-700 bg-zinc-950/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm leading-6 text-zinc-400" aria-live="polite">${esc(state.loadNote)}</p>
+        <button type="button" data-action="load" class="shrink-0 border border-zinc-600 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-200 hover:border-olive-500" ${state.loading ? "disabled" : ""}>Завантажити сценарії з JSON</button>
+      </div>
+      ${resumeBlock}
+      <div class="mt-5 grid gap-3 lg:grid-cols-3">${cards}</div>`;
+  }
+
+  function viewSimulation() {
+    const scenario = currentScenario();
+    const step = currentStep();
+    if (!scenario || !step) {
+      return `<p class="text-zinc-300">Кейс не містить кроку для проходження.</p>`;
+    }
+    const option = (step.options || []).find((item) => item.id === state.lockedOption);
+    const last = state.stepIndex >= scenario.steps.length - 1;
+    const cards = (step.options || []).map((item, index) => optionCard(item, index, "solo")).join("");
+    const norms = (scenario.norms || []).map((norm) => `<span class="border border-zinc-800 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">${esc(normTitle(norm))}</span>`).join("");
+    const feedback = state.revealed && option ? `
+      <section id="feedback" class="rise mt-4 border border-olive-700 bg-zinc-900 p-5">
+        <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-olive-300">Миттєвий розбір</p>
+        <h2 class="mt-2 font-display text-3xl tracking-wide text-zinc-50">Аналіз кроку</h2>
+        <p class="mt-3 text-sm leading-7 text-zinc-300">${esc(option.analysis)}</p>
+        <div class="mt-4 border border-zinc-800 bg-zinc-950 p-4">
+          <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500">Правове обґрунтування</p>
+          <p class="mt-2 text-sm leading-7 text-zinc-300">${esc(option.legal)}</p>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Зміна шкал</span>
+          ${metricChips(option.deltas || {})}
+        </div>
+        <button type="button" data-action="next" class="mt-5 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.12em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">${last ? "До підсумку" : "Наступний крок"}</button>
+      </section>` : "";
+    return `
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <button type="button" data-action="goto" data-screen="cases" class="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">До списку кейсів</button>
+        <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">${esc(scenario.code)} · крок ${String(state.stepIndex + 1).padStart(2, "0")} / ${String(scenario.steps.length).padStart(2, "0")}</p>
+      </div>
+      <div class="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <section class="order-2 lg:order-1">
+          <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-olive-400">${esc(scenario.field)}</p>
+          <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">${esc(scenario.title)}</h1>
+          <div class="mt-3 flex flex-wrap gap-2">${norms}</div>
+          <article class="mt-5 border border-zinc-800 bg-zinc-950/80 p-5">
+            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ситуація</p>
+            <p class="mt-3 text-base leading-7 text-zinc-200">${esc(step.prompt)}</p>
+          </article>
+          <div class="mt-4 flex flex-col gap-3">${cards}</div>
+          ${feedback}
+        </section>
+        <aside class="order-1 border border-zinc-800 bg-zinc-900/80 p-4 lg:order-2 lg:sticky lg:top-4 lg:self-start">
+          <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Шкали в реальному часі</p>
+          <div class="mt-4 flex flex-col gap-4">${METRICS.map((metric) => gauge(metric, false)).join("")}</div>
+          <p class="mt-4 text-xs leading-5 text-zinc-500">Кожне значення від 0 до 100. Вибір фіксує картку і одразу змінює баланс.</p>
+        </aside>
+      </div>`;
+  }
+
+  function viewDebrief() {
+    const scenario = currentScenario();
+    if (!scenario) return "";
+    const log = state.history.map((entry, index) => `
+      <article class="border border-zinc-800 bg-zinc-950/70 p-4">
+        <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Крок ${String(index + 1).padStart(2, "0")}</p>
+        <h2 class="mt-2 font-display text-2xl tracking-wide text-zinc-50">${esc(entry.option.title)}</h2>
+        <p class="mt-2 text-sm leading-6 text-zinc-400">${esc(entry.option.analysis)}</p>
+        <p class="mt-3 text-sm leading-6 text-zinc-300">${esc(entry.option.legal)}</p>
+        <div class="mt-3 flex flex-wrap gap-3">${metricChips(entry.option.deltas || {})}</div>
+      </article>`).join("");
+    const norms = (scenario.norms || []).map((norm) => {
+      const href = normHref(norm);
+      const title = esc(normTitle(norm));
+      if (!href) return `<li class="text-sm text-zinc-300">${title}</li>`;
+      return `<li><a class="text-sm text-amber-500/90 underline decoration-zinc-700 underline-offset-4 hover:text-amber-400" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${title}</a></li>`;
+    }).join("");
+    const lines = posture(state.scores).map((line) => `<p class="text-sm leading-6 text-zinc-300">${esc(line)}</p>`).join("");
+    return `
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">${esc(scenario.code)} · підсумок</p>
+      <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Розбір проходження</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">${esc(scenario.title)}. Нижче фінальний баланс трьох шкал і правова опора обраних кроків.</p>
+      <section class="mt-6 grid gap-4 border border-zinc-800 bg-zinc-900/80 p-5 sm:grid-cols-3">
+        ${METRICS.map((metric) => gauge(metric, true)).join("")}
+      </section>
+      <section class="mt-4 border border-zinc-800 bg-zinc-950/70 p-5">
+        <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-400">Читання шкал</p>
+        <div class="mt-3 flex flex-col gap-2">${lines}</div>
+      </section>
+      <section class="mt-4">
+        <h2 class="font-display text-3xl tracking-wide text-zinc-50">Правове обґрунтування</h2>
+        <ul class="mt-3 flex flex-col gap-2">${norms}</ul>
+      </section>
+      <div class="mt-4 flex flex-col gap-3">${log}</div>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button type="button" data-action="restart" class="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Пройти ще раз</button>
+        <button type="button" data-action="goto" data-screen="cases" class="border border-zinc-700 px-5 py-3 font-display text-xl tracking-[0.1em] text-zinc-200 hover:border-olive-500">Інший кейс</button>
+        <button type="button" data-action="goto" data-screen="dashboard" class="border border-zinc-700 px-5 py-3 font-display text-xl tracking-[0.1em] text-zinc-200 hover:border-olive-500">На головну</button>
+      </div>`;
+  }
+
+  function viewTeacher() {
+    const options = state.scenarios.map((item) => `<option value="${esc(item.id)}" ${state.room && state.room.scenarioId === item.id ? "selected" : ""}>${esc(item.code)} · ${esc(item.title)}</option>`).join("");
+    const room = state.room;
+    const panel = room ? `
+      <section class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div class="border border-zinc-800 bg-zinc-900/80 p-5">
+          <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-400">Код кімнати</p>
+          <p class="mt-3 font-mono text-4xl tracking-[0.28em] text-zinc-50 sm:text-5xl">${esc(room.code)}</p>
+          <p class="mt-3 text-sm text-zinc-400">Створено о ${esc(room.clock)}. Кімната живе в цьому сеансі браузера. Слухач входить без імені.</p>
+          <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-amber-500/90" aria-live="polite">${esc(state.copyNote)}</p>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button type="button" data-action="copy" class="border border-zinc-600 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-200 hover:border-olive-500">Копіювати код</button>
+            <button type="button" data-action="admit" class="border border-olive-600 bg-olive-800 px-4 py-3 font-display text-xl tracking-[0.08em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Анонімний вхід слухача</button>
+            <button type="button" data-action="goto" data-screen="votes" class="border border-zinc-600 px-4 py-3 font-display text-xl tracking-[0.08em] text-zinc-100 hover:border-olive-500">Розподіл голосів</button>
+          </div>
+        </div>
+        <div class="border border-zinc-800 bg-zinc-900 p-4 text-center">
+          <div class="inline-block bg-zinc-100 p-3">${qrMarkup(room.code)}</div>
+          <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Навчальне зображення QR</p>
+        </div>
+      </section>` : "";
+    return `
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Фаза викладача</p>
+          <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Групове заняття</h1>
+        </div>
+        <button type="button" data-action="goto" data-screen="dashboard" class="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
+      </div>
+      <p class="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Оберіть кейс, створіть код і покажіть його аудиторії. Слухач підтверджує код, обирає один варіант першого кроку, після чого з’являється знеособлений розподіл.</p>
+      <div class="mt-5 flex flex-col gap-3 border border-zinc-800 bg-zinc-900/70 p-4 sm:flex-row sm:items-end">
+        <label class="flex flex-1 flex-col gap-2 text-sm text-zinc-300">
+          Кейс для кімнати
+          <select id="scenario-pick" class="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100">${options}</select>
+        </label>
+        <button type="button" data-action="create-room" class="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Створити кімнату</button>
+      </div>
+      ${panel}`;
+  }
+
+  function viewJoin() {
+    const disabled = !state.room;
+    return `
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Слухач</p>
+      <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Анонімний вхід</h1>
+      <p class="mt-4 max-w-2xl text-sm leading-6 text-zinc-400">Ім’я не запитується і не зберігається. Потрібен лише код кімнати, який показав викладач.</p>
+      <form data-form="join" class="mt-6 max-w-md border border-zinc-800 bg-zinc-900/80 p-5">
+        <label for="room-code" class="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Код кімнати</label>
+        <input id="room-code" name="code" maxlength="6" autocomplete="off" value="${esc(state.joinDraft === null && state.room ? state.room.code : state.joinDraft || "")}" class="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 font-mono text-2xl uppercase tracking-[0.28em] text-zinc-50" ${disabled ? "disabled" : ""}>
+        <p class="mt-3 min-h-5 text-sm text-amber-400" aria-live="polite">${esc(state.joinError)}</p>
+        <button type="submit" class="mt-2 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700" ${disabled ? "disabled" : ""}>Увійти анонімно</button>
+      </form>
+      <button type="button" data-action="goto" data-screen="teacher" class="mt-4 border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">До панелі викладача</button>`;
+  }
+
+  function viewBallot() {
+    const scenario = state.room && state.scenarios.find((item) => item.id === state.room.scenarioId);
+    const step = scenario && scenario.steps && scenario.steps[0];
+    if (!scenario || !step) return "";
+    const cards = (step.options || []).map((item, index) => optionCard(item, index, "listener")).join("");
+    const ready = state.listenerVote ? `<button type="button" data-action="goto" data-screen="votes" class="mt-4 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Показати розподіл</button>` : "";
+    return `
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Кімната ${esc(state.room.code)} · анонімно</p>
+      <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">${esc(scenario.title)}</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">Груповий режим фіксує лише знеособлений вибір першого кроку. Особисті шкали тренажера тут не змінюються.</p>
+      <article class="mt-5 border border-zinc-800 bg-zinc-950/80 p-5">
+        <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ситуація для аудиторії</p>
+        <p class="mt-3 text-base leading-7 text-zinc-200">${esc(step.prompt)}</p>
+      </article>
+      <div class="mt-4 flex flex-col gap-3">${cards}</div>
+      ${ready}`;
+  }
+
+  function viewVotes() {
+    const scenario = state.room && state.scenarios.find((item) => item.id === state.room.scenarioId);
+    const rows = ensureDistribution();
+    const note = state.listenerVote ? "У розподілі є відповідь цього сеансу і змодельовані голоси решти аудиторії." : "Живу відповідь ще не передано. Показано змодельований розподіл для підготовки до заняття.";
+    const bars = rows.map((row) => `
+      <div class="border ${row.yours ? "border-amber-700" : "border-zinc-800"} bg-zinc-950 p-4">
+        <div class="flex items-start justify-between gap-3">
+          <p class="text-sm text-zinc-200">${esc(row.title)}</p>
+          <p class="font-mono text-sm text-zinc-300">${row.pct}%</p>
+        </div>
+        <div class="mt-3 h-2 bg-zinc-800">
+          <div class="bar-fill h-2 ${row.yours ? "bg-amber-500" : "bg-olive-500"}" style="width:${Math.max(0, row.pct)}%"></div>
+        </div>
+        <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">Відповідей: ${row.count}${row.yours ? " · ваш вибір" : ""}</p>
+      </div>`).join("");
+    return `
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Аудиторія ${state.room ? esc(state.room.code) : ""}</p>
+      <h1 class="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Розподіл голосів</h1>
+      <p class="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">${esc(scenario ? scenario.title : "")} ${esc(note)}</p>
+      <div class="mt-5 flex flex-col gap-3">${bars}</div>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button type="button" data-action="goto" data-screen="teacher" class="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Панель викладача</button>
+        <button type="button" data-action="goto" data-screen="ballot" class="border border-zinc-700 px-5 py-3 font-display text-xl tracking-[0.1em] text-zinc-200 hover:border-olive-500">Картки слухача</button>
+      </div>`;
+  }
+
+  function render() {
+    if ((state.screen === "simulation" || state.screen === "debrief") && !currentScenario()) {
+      state.screen = "cases";
+    }
+    if ((state.screen === "votes" || state.screen === "ballot") && !state.room) {
+      state.screen = "teacher";
+    }
+    if (state.screen === "ballot" && !state.admitted) {
+      state.screen = "join";
+    }
+    const views = {
+      dashboard: viewDashboard,
+      library: viewLibrary,
+      cases: viewCases,
+      simulation: viewSimulation,
+      debrief: viewDebrief,
+      teacher: viewTeacher,
+      join: viewJoin,
+      ballot: viewBallot,
+      votes: viewVotes
+    };
+    const view = views[state.screen] || viewDashboard;
+    document.getElementById("app").innerHTML = shell(view());
+  }
+
+  function openCase(id) {
+    const scenario = state.scenarios.find((item) => item.id === id);
+    if (!scenario || !scenario.steps || !scenario.steps.length) {
+      state.loadNote = "У цьому записі ще немає кроків симуляції.";
+      state.screen = "cases";
+      render();
+      return;
+    }
+    state.scenarioId = id;
+    resetRun();
+    state.screen = "simulation";
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function choose(optionId) {
+    if (state.revealed) return;
+    const step = currentStep();
+    if (!step) return;
+    const option = (step.options || []).find((item) => item.id === optionId);
+    if (!option) return;
+    state.lockedOption = optionId;
+    state.revealed = true;
+    METRICS.forEach((metric) => {
+      const delta = Number((option.deltas || {})[metric.key] || 0);
+      state.scores[metric.key] = clamp(state.scores[metric.key] + delta);
+    });
+    state.history.push({ option });
+    render();
+    const feedback = document.getElementById("feedback");
+    if (feedback) feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function nextStep() {
+    const scenario = currentScenario();
+    const step = currentStep();
+    if (!scenario || !step || !state.revealed) return;
+    if (state.stepIndex >= scenario.steps.length - 1) {
+      state.finished = true;
+      state.screen = "debrief";
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    state.stepIndex += 1;
+    state.lockedOption = null;
+    state.revealed = false;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  async function loadScenarios() {
+    if (state.loading) return;
+    state.loading = true;
+    state.loadNote = "Зчитування scenarios.json…";
+    render();
+    try {
+      const pack = await ScenarioLoader.load();
+      state.scenarios = pack;
+      state.loadNote = `Завантажено ${pack.length} сценаріїв із ${ScenarioLoader.origin}.`;
+    } catch (error) {
+      state.scenarios = ScenarioLoader.builtin();
+      state.loadNote = "Зовнішній файл зараз недоступний. На екрані лишається вбудований набір прототипу.";
+    }
+    state.loading = false;
+    render();
+  }
+
+  function createRoom() {
+    const select = document.getElementById("scenario-pick");
+    const scenarioId = select ? select.value : state.scenarios[0] && state.scenarios[0].id;
+    state.room = {
+      code: makeCode(),
+      scenarioId,
+      clock: new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })
+    };
+    state.admitted = false;
+    state.listenerVote = null;
+    state.distribution = null;
+    state.joinError = "";
+    state.joinDraft = null;
+    state.copyNote = "Код готовий до показу аудиторії.";
+    render();
+  }
+
+  async function copyCode() {
+    if (!state.room) return;
+    try {
+      await navigator.clipboard.writeText(state.room.code);
+      state.copyNote = "Код скопійовано.";
+    } catch (error) {
+      state.copyNote = "Скопіюйте код із великого рядка.";
+    }
+    render();
+  }
+
+  function onClick(event) {
+    const node = event.target.closest("[data-action]");
+    if (!node) return;
+    const action = node.dataset.action;
+    if (action === "goto") {
+      state.screen = node.dataset.screen;
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (action === "open") {
+      openCase(node.dataset.id);
+      return;
+    }
+    if (action === "choose") {
+      choose(node.dataset.id);
+      return;
+    }
+    if (action === "listener") {
+      if (state.listenerVote) return;
+      state.listenerVote = node.dataset.id;
+      state.distribution = null;
+      render();
+      return;
+    }
+    if (action === "next") {
+      nextStep();
+      return;
+    }
+    if (action === "load") {
+      loadScenarios();
+      return;
+    }
+    if (action === "create-room") {
+      createRoom();
+      return;
+    }
+    if (action === "copy") {
+      copyCode();
+      return;
+    }
+    if (action === "admit") {
+      state.joinError = "";
+      state.joinDraft = null;
+      state.screen = "join";
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (action === "resume") {
+      state.screen = "simulation";
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (action === "restart") {
+      const id = state.scenarioId;
+      resetRun();
+      state.scenarioId = id;
+      state.screen = "simulation";
+      render();
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function onSubmit(event) {
+    const form = event.target.closest("[data-form]");
+    if (!form) return;
+    event.preventDefault();
+    if (form.dataset.form !== "join") return;
+    const code = String(form.code.value || "").trim().toUpperCase();
+    state.joinDraft = code;
+    if (!state.room) {
+      state.joinError = "Спочатку створіть кімнату в режимі викладача.";
+      render();
+      return;
+    }
+    if (code !== state.room.code) {
+      state.joinError = "Код не збігається з активною кімнатою цього сеансу.";
+      state.admitted = false;
+      render();
+      return;
+    }
+    state.joinError = "";
+    state.admitted = true;
+    state.screen = "ballot";
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  const root = document.getElementById("app");
+  root.addEventListener("click", onClick);
+  root.addEventListener("submit", onSubmit);
+  render();
+})();
+</script>
+</body>
+</html>

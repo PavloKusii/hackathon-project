@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #09090b;
+  color: #e4e4e7;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.action-card {
+  max-height: 32rem;
+  transition: max-height .45s ease, opacity .35s ease, transform .35s ease, border-color .2s ease, background-color .2s ease, margin .45s ease, padding .45s ease;
+}
+
+.action-card.is-out {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.rise {
+  animation: rise .4s ease;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bar-fill {
+  transition: width .55s ease;
+}
+
+:focus-visible {
+  outline: 2px solid #6b7a30;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #4b5320;
+  color: #fafafa;
+}
