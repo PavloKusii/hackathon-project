@@ -26,7 +26,7 @@ function posture(scores) {
   return lines;
 }
 
-export default function Debriefing({ scenario, run, onAgain, onHome }) {
+export default function Debriefing({ scenario, run, onAgain, onHome, stored, guest }) {
   const links = [];
   const seen = new Set();
   (scenario.norms || []).forEach((norm) => {
@@ -46,7 +46,9 @@ export default function Debriefing({ scenario, run, onAgain, onHome }) {
     <section>
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{scenario.code} · підсумок</p>
       <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Розбір проходження</h1>
-      <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{scenario.title}. Нижче фінальний баланс трьох шкал і правова опора обраних кроків.</p>
+      <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{scenario.title}. Нижче ваші відповіді, пояснення і те, де вибір був слабшим за доброчесністю відносно інших варіантів цього кроку.</p>
+      {guest ? <p className="mt-3 border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">Ви пройшли кейс як гість. Ці відповіді ніде не зберігаються.</p> : null}
+      {stored ? <p className="mt-3 border border-olive-900 bg-olive-950 px-4 py-3 text-sm text-olive-100">Розбір збережено на вашому обліковому записі.</p> : null}
       <section className="mt-6 border border-zinc-800 bg-zinc-900/80 p-5">
         <MetricsGauges scores={run.scores} large />
       </section>
@@ -76,6 +78,8 @@ export default function Debriefing({ scenario, run, onAgain, onHome }) {
         {run.history.map((entry, index) => (
           <article key={`${entry.stepId}-${index}`} className="border border-zinc-800 bg-zinc-950/70 p-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Крок {String(index + 1).padStart(2, "0")}</p>
+            <p className={`mt-2 font-mono text-[10px] uppercase tracking-[0.16em] ${entry.mistake ? "text-amber-400" : "text-olive-400"}`}>{entry.mistake ? "Слабше рішення за доброчесністю" : "Рішення тримає доброчесність на рівні найсильнішого варіанта"}</p>
+            {entry.prompt ? <p className="mt-2 text-sm leading-6 text-zinc-500">{entry.prompt}</p> : null}
             <h2 className="mt-2 font-display text-2xl tracking-wide text-zinc-50">{entry.option.title}</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">{entry.option.analysis}</p>
             <p className="mt-3 text-sm leading-6 text-zinc-300">{entry.option.legal}</p>

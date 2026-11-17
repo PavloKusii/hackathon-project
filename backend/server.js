@@ -2,14 +2,14 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import os from "os";
+import { attachAuth, userFromToken } from "./auth.js";
+import { appendSession, attachCaseRoutes, hostAllowed, loadCatalog } from "./cases.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const scenariosDir = path.join(__dirname, "scenarios");
 const PORT = Number(process.env.PORT) || 4000;
 
 const app = express();
@@ -17,10 +17,11 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: true } });
 
 app.use(cors());
+app.use(express.json({ limit: "512kb" }));
 
 const rooms = new Map();
 const sockets = new Map();
-let scenarios = [];
+let catalog = { publicList: [], byId: new Map() };
 
 function channel(code) {
   return `room:${code}`;
@@ -51,32 +52,12 @@ function lanAddress() {
 }
 
 async function refreshScenarios() {
-  await fs.mkdir(scenariosDir, { recursive: true });
-  let files = [];
-  try {
-    files = await fs.readdir(scenariosDir);
-  } catch {
-    files = [];
-  }
-  const next = [];
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    try {
-      const raw = await fs.readFile(path.join(scenariosDir, file), "utf8");
-      const data = JSON.parse(raw);
-      if (data.template || !data.id || !Array.isArray(data.steps) || data.steps.length === 0) continue;
-      next.push(data);
-    } catch {
-      continue;
-    }
-  }
-  next.sort((a, b) => String(a.code || a.id).localeCompare(String(b.code || b.id), "uk"));
-  scenarios = next;
-  return scenarios;
+  catalog = await loadCatalog();
+  return catalog.publicList;
 }
 
 function scenarioById(id) {
-  return scenarios.find((item) => item.id === id) || null;
+  return catalog.byId.get(id) || null;
 }
 
 function clearVotes(room) {
@@ -85,33 +66,91 @@ function clearVotes(room) {
   }
 }
 
-function publicState(room) {
-  const scenario = scenarioById(room.scenarioId);
-  const steps = scenario?.steps || [];
-  const visible = room.phase === "live" || room.phase === "done";
-  const step = visible ? steps[room.stepIndex] : null;
-  const options = step?.options || [];
-  const tallies = options.map((option) => ({
-    id: option.id,
-    count: [...room.guests.values()].filter((guest) => guest.optionId === option.id).length
-  }));
+function onlineCount(room) {
   let online = 0;
   for (const guest of room.guests.values()) {
     if (guest.sockets > 0) online += 1;
   }
+  room.peak = Math.max(room.peak || 0, online);
+  return online;
+}
+
+function talliesFor(room, step) {
+  const options = step?.options || [];
+  const rows = options.map((option) => ({
+    id: option.id,
+    title: option.title,
+    count: [...room.guests.values()].filter((guest) => guest.optionId === option.id).length,
+    deltas: option.deltas || {}
+  }));
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  return rows.map((row) => ({ ...row, pct: total ? Math.round((row.count / total) * 100) : 0 }));
+}
+
+function snapshotStep(room) {
+  const scenario = scenarioById(room.scenarioId);
+  const step = scenario?.steps?.[room.stepIndex];
+  if (!step || room.phase !== "live") return;
+  room.archive.push({
+    stepIndex: room.stepIndex,
+    stepId: step.id,
+    prompt: step.prompt,
+    options: talliesFor(room, step)
+  });
+}
+
+function playerState(room) {
+  const scenario = scenarioById(room.scenarioId);
+  const steps = scenario?.steps || [];
+  const visible = room.phase === "live" || room.phase === "done";
   return {
     code: room.code,
     scenarioId: room.scenarioId,
     stepIndex: room.stepIndex,
     stepCount: steps.length,
     phase: room.phase,
-    participantCount: online,
-    tallies
+    participantCount: onlineCount(room),
+    groupLabel: room.groupLabel || "",
+    named: Boolean(room.named)
+  };
+}
+
+function hostState(room) {
+  const scenario = scenarioById(room.scenarioId);
+  const steps = scenario?.steps || [];
+  const visible = room.phase === "live" || room.phase === "done";
+  const step = visible ? steps[room.stepIndex] : null;
+  return {
+    ...playerState(room),
+    tallies: talliesFor(room, step)
+  };
+}
+
+function hostArchive(room) {
+  return {
+    code: room.code,
+    scenarioId: room.scenarioId,
+    groupLabel: room.groupLabel || "",
+    named: Boolean(room.named),
+    createdAt: room.createdAt,
+    phase: room.phase,
+    archive: room.archive
   };
 }
 
 function broadcast(room) {
-  io.to(channel(room.code)).emit("room_state", publicState(room));
+  const players = playerState(room);
+  const host = hostState(room);
+  const archive = hostArchive(room);
+  for (const [id, meta] of sockets) {
+    if (meta.code !== room.code) continue;
+    if (meta.role === "host") {
+      io.to(id).emit("room_state", host);
+      io.to(id).emit("host_archive", archive);
+    } else {
+      io.to(id).emit("room_state", players);
+    }
+  }
 }
 
 function releaseSocket(socket) {
@@ -128,6 +167,25 @@ function releaseSocket(socket) {
   broadcast(room);
 }
 
+async function persistRoom(room) {
+  if (room.phase !== "done" || room.persisted) return;
+  room.persisted = true;
+  const scenario = scenarioById(room.scenarioId);
+  await appendSession({
+    code: room.code,
+    scenarioId: room.scenarioId,
+    scenarioTitle: scenario?.title || "",
+    scenarioCode: scenario?.code || "",
+    groupName: room.groupName,
+    groupLabel: room.groupLabel,
+    named: room.named,
+    hostId: room.hostUserId,
+    createdAt: room.createdAt,
+    participantPeak: room.peak || 0,
+    steps: room.archive
+  });
+}
+
 app.get("/api/scenarios", async (req, res) => {
   const list = await refreshScenarios();
   res.json({ scenarios: list });
@@ -138,28 +196,43 @@ app.get("/api/host", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("create_room", async ({ scenarioId } = {}) => {
+  socket.on("create_room", async ({ scenarioId, groupName, token } = {}) => {
     await refreshScenarios();
+    const user = await userFromToken(token);
     const scenario = scenarioById(scenarioId);
-    if (!scenario) {
-      socket.emit("room_error", { message: "Сценарій для кімнати не знайдено." });
+    if (!user || (user.role !== "organizer" && user.role !== "superadmin")) {
+      socket.emit("room_error", { message: "Групове заняття відкриває організатор або супер-адмін." });
+      return;
+    }
+    if (!scenario || !hostAllowed(user, scenario)) {
+      socket.emit("room_error", { message: "Цей кейс не можна відкрити у вашій кімнаті." });
       return;
     }
     releaseSocket(socket);
     const code = makeCode();
-    const token = crypto.randomBytes(18).toString("hex");
+    const roomToken = crypto.randomBytes(18).toString("hex");
+    const named = String(groupName || "").trim().slice(0, 80);
     const room = {
       code,
-      token,
+      token: roomToken,
       scenarioId: scenario.id,
       stepIndex: 0,
       phase: "lobby",
-      guests: new Map()
+      guests: new Map(),
+      archive: [],
+      peak: 0,
+      hostUserId: user.id,
+      groupName: named,
+      named: Boolean(named),
+      groupLabel: named || new Intl.DateTimeFormat("uk-UA", { dateStyle: "short", timeStyle: "short" }).format(new Date()),
+      createdAt: new Date().toISOString(),
+      persisted: false
     };
     rooms.set(code, room);
-    sockets.set(socket.id, { role: "host", code, token });
+    sockets.set(socket.id, { role: "host", code, token: roomToken });
     socket.join(channel(code));
-    socket.emit("room_created", { code, token, scenarioId: scenario.id });
+    socket.emit("room_created", { code, token: roomToken, scenarioId: scenario.id, groupLabel: room.groupLabel });
+    socket.emit("scenario_payload", scenario);
     broadcast(room);
   });
 
@@ -172,7 +245,9 @@ io.on("connection", (socket) => {
     releaseSocket(socket);
     sockets.set(socket.id, { role: "host", code: room.code, token });
     socket.join(channel(room.code));
-    socket.emit("room_created", { code: room.code, token, scenarioId: room.scenarioId });
+    const scenario = scenarioById(room.scenarioId);
+    socket.emit("room_created", { code: room.code, token, scenarioId: room.scenarioId, groupLabel: room.groupLabel });
+    if (scenario) socket.emit("scenario_payload", scenario);
     broadcast(room);
   });
 
@@ -194,9 +269,11 @@ io.on("connection", (socket) => {
     const current = sockets.get(socket.id);
     if (current && current.role === "guest" && current.code === room.code && current.guestId === id) {
       const guest = room.guests.get(id);
+      const scenario = scenarioById(room.scenarioId);
       socket.emit("joined_room", { code: room.code, scenarioId: room.scenarioId });
+      if (scenario) socket.emit("scenario_payload", scenario);
       socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest?.optionId || "" });
-      socket.emit("room_state", publicState(room));
+      socket.emit("room_state", playerState(room));
       return;
     }
     releaseSocket(socket);
@@ -205,7 +282,9 @@ io.on("connection", (socket) => {
     guest.sockets += 1;
     sockets.set(socket.id, { role: "guest", code: room.code, guestId: id });
     socket.join(channel(room.code));
+    const scenario = scenarioById(room.scenarioId);
     socket.emit("joined_room", { code: room.code, scenarioId: room.scenarioId });
+    if (scenario) socket.emit("scenario_payload", scenario);
     socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest.optionId || "" });
     broadcast(room);
   });
@@ -228,6 +307,7 @@ io.on("connection", (socket) => {
       room.stepIndex = 0;
       clearVotes(room);
     } else if (room.phase === "live") {
+      snapshotStep(room);
       if (room.stepIndex >= total - 1) {
         room.phase = "done";
       } else {
@@ -236,6 +316,7 @@ io.on("connection", (socket) => {
       }
     }
     broadcast(room);
+    if (room.phase === "done") await persistRoom(room);
   });
 
   socket.on("submit_vote", ({ code, guestId, optionId } = {}) => {
@@ -277,4 +358,6 @@ io.on("connection", (socket) => {
 });
 
 await refreshScenarios();
+await attachAuth(app);
+attachCaseRoutes(app, { onChange: refreshScenarios });
 httpServer.listen(PORT, "0.0.0.0");

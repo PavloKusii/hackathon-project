@@ -3,16 +3,7 @@ import ActionCard from "../components/ActionCard";
 import FeedbackPanel from "../components/FeedbackPanel";
 import MetricsGauges from "../components/MetricsGauges";
 import { onConnect, onConnectError, send, subscribe } from "../services/socketService";
-
-const BASE = 62;
-
-function clamp(value) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function freshScores() {
-  return { integrity: BASE, trust: BASE, effectiveness: BASE };
-}
+import { clampScore, freshScores } from "../scores";
 
 function randomGuestId() {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -44,7 +35,7 @@ function codeFromLocation() {
   return (new URLSearchParams(window.location.search).get("room") || "").trim().toUpperCase();
 }
 
-export default function GroupParticipant({ scenarios, initialCode, onBack }) {
+export default function GroupParticipant({ scenarios, initialCode, token, onSave, onBack }) {
   const entry = (initialCode || codeFromLocation() || "").trim().toUpperCase();
   const activeRef = useRef(entry);
   const [draft, setDraft] = useState(entry);
@@ -54,7 +45,10 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
   const [note, setNote] = useState("");
   const [joining, setJoining] = useState(Boolean(entry));
   const [scores, setScores] = useState(freshScores);
+  const [history, setHistory] = useState([]);
+  const [bundle, setBundle] = useState(null);
   const appliedRef = useRef(new Set());
+  const savedRef = useRef(false);
 
   useEffect(() => {
     const offState = subscribe("room_state", (payload) => {
@@ -67,6 +61,9 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
       if (!activeRef.current) return;
       setJoining(false);
       setNote(payload.message || "Вхід не вдався.");
+    });
+    const offScenario = subscribe("scenario_payload", (payload) => {
+      if (payload?.id) setBundle(payload);
     });
     const offVote = subscribe("your_vote", (payload) => {
       if (!payload) return;
@@ -95,6 +92,7 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
     return () => {
       offState();
       offError();
+      offScenario();
       offVote();
       offConnect();
       offFail();
@@ -119,7 +117,7 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
     send("join_room", { code, guestId: guestIdFor(code) });
   }
 
-  const scenario = scenarios.find((item) => item.id === room?.scenarioId) || null;
+  const scenario = scenarios.find((item) => item.id === room?.scenarioId) || (bundle?.id === room?.scenarioId ? bundle : null);
   const liveStep = scenario && room && room.phase === "live" ? scenario.steps?.[room.stepIndex] : null;
   const voted = Boolean(room && choice.stepIndex === room.stepIndex && choice.optionId);
   const showForm = !room && !joining;
@@ -134,16 +132,36 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
     setScores((prev) => {
       const next = { ...prev };
       ["integrity", "trust", "effectiveness"].forEach((metric) => {
-        next[metric] = clamp((next[metric] || 0) + Number(picked.deltas?.[metric] || 0));
+        next[metric] = clampScore((next[metric] || 0) + Number(picked.deltas?.[metric] || 0));
       });
       return next;
     });
-  }, [voted, picked, room, choice.optionId]);
+    const best = Math.max(...(liveStep.options || []).map((item) => Number(item.deltas?.integrity || 0)));
+    setHistory((current) => {
+      if (current.some((entry) => entry.stepId === liveStep.id)) return current;
+      return [...current, {
+        stepId: liveStep.id,
+        prompt: liveStep.prompt,
+        option: picked,
+        mistake: Number(picked.deltas?.integrity || 0) < best
+      }];
+    });
+  }, [voted, picked, room, choice.optionId, liveStep]);
 
   useEffect(() => {
     if (!voted) return;
     document.getElementById("feedback")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [voted, room?.stepIndex, choice.optionId]);
+
+  useEffect(() => {
+    if (room?.phase !== "done" || !token || !history.length || savedRef.current || !onSave) return;
+    savedRef.current = true;
+    onSave({
+      scenarioId: room.scenarioId,
+      mode: "group",
+      choices: history.map((entry) => ({ stepId: entry.stepId, optionId: entry.option.id }))
+    });
+  }, [room?.phase, room?.scenarioId, token, history, onSave]);
 
   function vote(optionId) {
     if (!room || room.phase !== "live" || voted) return;
@@ -187,9 +205,24 @@ export default function GroupParticipant({ scenarios, initialCode, onBack }) {
           ) : null}
           {room.phase === "done" ? (
             <article className="mt-4 border border-zinc-700 bg-zinc-900 p-6">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">Завершено</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Ваш розбір</p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Заняття завершено</h2>
-              <p className="mt-3 text-base leading-7 text-zinc-200">Дякуємо за участь у розборі.</p>
+              <p className="mt-3 text-sm leading-6 text-zinc-300">
+                {token ? "Особисті відповіді збережено на обліковому записі. Організатор бачить лише загальні відсотки." : "Ви увійшли анонімно. Цей розбір лишається на екрані і ніде не зберігається."}
+              </p>
+              <div className="mt-4"><MetricsGauges scores={scores} /></div>
+              <div className="mt-4 flex flex-col gap-3">
+                {history.map((entry, index) => (
+                  <div key={`${entry.stepId}-${index}`} className="border border-zinc-800 bg-zinc-950 p-4">
+                    <p className={`font-mono text-[10px] uppercase tracking-[0.16em] ${entry.mistake ? "text-amber-400" : "text-olive-400"}`}>
+                      Крок {String(index + 1).padStart(2, "0")} · {entry.mistake ? "слабше за доброчесністю" : "сильний варіант"}
+                    </p>
+                    <h3 className="mt-2 font-display text-2xl text-zinc-50">{entry.option.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-zinc-300">{entry.option.analysis}</p>
+                    {entry.option.legal ? <p className="mt-2 text-sm leading-6 text-zinc-400">{entry.option.legal}</p> : null}
+                  </div>
+                ))}
+              </div>
             </article>
           ) : null}
           {room.phase === "live" && !liveStep ? (

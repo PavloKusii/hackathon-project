@@ -1,4 +1,4 @@
-export default function CaseSelector({ scenarios, loading, loadError, onReload, onStart, onBack }) {
+export default function CaseSelector({ scenarios, localCases = [], loading, loadError, onReload, onStart, onEdit, onBack }) {
   return (
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -10,7 +10,7 @@ export default function CaseSelector({ scenarios, loading, loadError, onReload, 
       </div>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-l-4 border-olive-500 bg-zinc-900/80 px-4 py-4">
         <p className="text-sm leading-6 text-zinc-300" aria-live="polite">
-          {loading ? "Відкриваємо список кейсів." : loadError || "Оберіть ситуацію і пройдіть її самостійно. Кожен крок змінює три шкали."}
+          {loading ? "Відкриваємо список кейсів." : loadError || "Публічні кейси відкриті без реєстрації. Час на проходження не обмежений. Гість не залишає запису, обліковий запис зберігає розбір."}
         </p>
         <button type="button" onClick={onReload} disabled={loading} className="shrink-0 border border-olive-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-olive-200 hover:border-olive-500 disabled:opacity-50">
           Оновити список
@@ -37,6 +37,24 @@ export default function CaseSelector({ scenarios, loading, loadError, onReload, 
           ))}
         </div>
       )}
+      {localCases.length > 0 ? (
+        <div className="mt-8">
+          <h2 className="font-display text-3xl text-zinc-50">Мої кейси</h2>
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {localCases.map((item) => (
+              <article key={item.id} className="flex flex-col border border-zinc-800 bg-zinc-950 p-5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.status === "published" ? "Публічний" : item.status === "pending" ? "На розгляді" : item.status === "rejected" ? "Приховано модерацією" : "Локальний"}</p>
+                <h3 className="mt-2 font-display text-3xl text-zinc-50">{item.title}</h3>
+                <p className="mt-3 flex-1 text-sm leading-6 text-zinc-400">{item.summary}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onStart(item.id)} className="border border-zinc-600 px-4 py-3 text-left font-display text-xl text-zinc-100">Пройти</button>
+                  {onEdit ? <button type="button" onClick={() => onEdit(item)} className="border border-olive-700 px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-olive-200">Редагувати</button> : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

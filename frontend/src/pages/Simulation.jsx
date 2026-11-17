@@ -1,35 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import MetricsGauges from "../components/MetricsGauges";
 import ActionCard from "../components/ActionCard";
 import FeedbackPanel from "../components/FeedbackPanel";
-
-function clamp(value) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function formatClock(total) {
-  const seconds = Math.max(0, total);
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
-}
+import { clampScore } from "../scores";
 
 export default function Simulation({ scenario, run, setRun, onExit, onDebrief }) {
   const step = scenario.steps[run.stepIndex];
-  const limit = Number(scenario.pressureSeconds) || 90;
-  const [left, setLeft] = useState(limit);
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
   const last = run.stepIndex >= scenario.steps.length - 1;
-
-  useEffect(() => {
-    setLeft(limit);
-    const started = Date.now();
-    const timer = setInterval(() => {
-      const passed = Math.floor((Date.now() - started) / 1000);
-      setLeft(Math.max(0, limit - passed));
-    }, 250);
-    return () => clearInterval(timer);
-  }, [scenario.id, run.stepIndex, limit]);
 
   useEffect(() => {
     if (!run.revealed) return;
@@ -42,14 +20,21 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
     if (!option) return;
     const scores = { ...run.scores };
     ["integrity", "trust", "effectiveness"].forEach((key) => {
-      scores[key] = clamp((scores[key] || 0) + Number(option.deltas?.[key] || 0));
+      scores[key] = clampScore((scores[key] || 0) + Number(option.deltas?.[key] || 0));
     });
+    const best = Math.max(...step.options.map((item) => Number(item.deltas?.integrity || 0)));
     setRun({
       ...run,
       revealed: true,
       lockedId: optionId,
       scores,
-      history: [...run.history, { stepId: step.id, prompt: step.prompt, option, scores: { ...scores } }]
+      history: [...run.history, {
+        stepId: step.id,
+        prompt: step.prompt,
+        option,
+        scores: { ...scores },
+        mistake: Number(option.deltas?.integrity || 0) < best
+      }]
     });
   }
 
@@ -64,8 +49,6 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
   }
 
   if (!step) return null;
-
-  const urgent = left <= 15;
 
   return (
     <section>
@@ -84,16 +67,9 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
               <span key={norm.title} className="border border-zinc-800 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">{norm.title}</span>
             ))}
           </div>
-          <article className={`mt-5 border bg-zinc-950/80 p-5 ${urgent ? "border-amber-700" : "border-zinc-800"}`}>
-            <div className="flex items-start justify-between gap-4">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ситуація</p>
-              <div className="text-right">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Вікно рішення</p>
-                <p className={`font-mono text-2xl ${urgent ? "text-amber-400" : "text-zinc-100"}`}>{formatClock(left)}</p>
-              </div>
-            </div>
+          <article className="mt-5 border border-zinc-800 bg-zinc-950/80 p-5">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ситуація · без обмеження часу</p>
             <p className="mt-3 text-base leading-7 text-zinc-200">{step.prompt}</p>
-            {left === 0 ? <p className="mt-3 text-sm text-amber-400">Час вікна вичерпано. Рішення ще можна зафіксувати.</p> : null}
           </article>
           <div className="mt-4 flex flex-col gap-3">
             {step.options.map((option, index) => (
@@ -114,7 +90,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
           <div className="mt-4">
             <MetricsGauges scores={run.scores} />
           </div>
-          <p className="mt-4 text-xs leading-5 text-zinc-500">Кожне значення від 0 до 100. Вибір фіксує картку і одразу змінює баланс.</p>
+          <p className="mt-4 text-xs leading-5 text-zinc-500">Кожна шкала від 0 до 100 і стартує зі 100. Час на крок не обмежений.</p>
         </aside>
       </div>
     </section>

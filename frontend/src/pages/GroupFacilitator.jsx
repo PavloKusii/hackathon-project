@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { ShareChart } from "../components/Charts";
 import { send, subscribe } from "../services/socketService";
 
 const STORAGE = "eg-host";
@@ -63,10 +64,12 @@ function readHost() {
   }
 }
 
-export default function GroupFacilitator({ scenarios, onBack }) {
+export default function GroupFacilitator({ scenarios, token, onBack }) {
   const [scenarioId, setScenarioId] = useState(scenarios[0]?.id || "");
+  const [groupName, setGroupName] = useState("");
   const [session, setSession] = useState(() => readHost());
   const [room, setRoom] = useState(null);
+  const [archive, setArchive] = useState([]);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -103,6 +106,11 @@ export default function GroupFacilitator({ scenarios, onBack }) {
       if (!saved?.code || payload.code !== saved.code) return;
       setRoom(payload);
     });
+    const offArchive = subscribe("host_archive", (payload) => {
+      const saved = readHost();
+      if (!saved?.code || payload.code !== saved.code) return;
+      setArchive(payload.archive || []);
+    });
     const offError = subscribe("room_error", (payload) => {
       setPending(false);
       setNote(payload.message || "Кімната не відповіла.");
@@ -117,6 +125,7 @@ export default function GroupFacilitator({ scenarios, onBack }) {
     return () => {
       offCreated();
       offState();
+      offArchive();
       offError();
     };
   }, []);
@@ -130,7 +139,7 @@ export default function GroupFacilitator({ scenarios, onBack }) {
     if (!scenarioId || pending) return;
     setPending(true);
     setNote("Створення кімнати…");
-    send("create_room", { scenarioId });
+    send("create_room", { scenarioId, groupName, token });
   }
 
   async function copyLink() {
@@ -161,8 +170,8 @@ export default function GroupFacilitator({ scenarios, onBack }) {
         </div>
         <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
       </div>
-      <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Оберіть кейс і відкрийте кімнату. QR веде на цю адресу з кодом кімнати. Телефон слухача одразу потрапляє в анонімний вхід, а діаграма оновлюється з кожним голосом.</p>
-      <div className="mt-5 flex flex-col gap-3 border border-zinc-800 bg-zinc-900/70 p-4 sm:flex-row sm:items-end">
+      <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Оберіть кейс і назву групи. Якщо назву лишити порожньою, сесія збережеться за датою та часом. Відповіді анонімні: на екрані лише кількість і відсоток кожного варіанта, без імен.</p>
+      <div className="mt-5 flex flex-col gap-3 border border-zinc-800 bg-zinc-900/70 p-4 lg:flex-row lg:items-end">
         <label className="flex flex-1 flex-col gap-2 text-sm text-zinc-300">
           Кейс для кімнати
           <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100">
@@ -170,6 +179,10 @@ export default function GroupFacilitator({ scenarios, onBack }) {
               <option key={item.id} value={item.id}>{item.code} · {item.title}</option>
             ))}
           </select>
+        </label>
+        <label className="flex flex-1 flex-col gap-2 text-sm text-zinc-300">
+          Назва групи
+          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={80} placeholder="Наприклад, група 22" className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
         </label>
         <button type="button" onClick={createRoom} disabled={pending || !scenarioId} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">
           Створити кімнату
@@ -223,8 +236,15 @@ export default function GroupFacilitator({ scenarios, onBack }) {
                   </div>
                 );
               })}
-              {room.phase === "lobby" ? <p className="text-sm text-zinc-500">Діаграма з’явиться разом із першим кроком.</p> : null}
+              {room.phase === "lobby" ? <p className="text-sm text-zinc-500">Діаграма з’явиться разом із першим кроком. Учасники в ній не підписані.</p> : null}
             </div>
+            {archive.length > 0 ? (
+              <section className="border border-zinc-800 bg-zinc-900/70 p-5">
+                <h2 className="font-display text-3xl text-zinc-50">Зведення кроків</h2>
+                <p className="mt-2 text-sm text-zinc-400">Група «{room.groupLabel || "без назви"}». Частки без прив’язки до людей. Після завершення запис лягає в аналітику.</p>
+                <div className="mt-4"><ShareChart steps={archive} /></div>
+              </section>
+            ) : null}
           </div>
           <aside className="border border-zinc-800 bg-zinc-900 p-4 text-center xl:sticky xl:top-4 xl:self-start">
             <div className="inline-block rounded bg-white p-4">
