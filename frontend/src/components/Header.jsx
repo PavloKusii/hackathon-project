@@ -3,7 +3,7 @@ import { ROLE_LABELS } from "../services/authService";
 export default function Header({ screen, role, user, onNavigate, onLogout }) {
   const casesOn = screen === "cases" || screen === "simulation" || screen === "debrief";
   const normsOn = screen === "library";
-  const staff = role === "organizer" || role === "superadmin";
+  const organizer = role === "organizer";
   return (
     <header>
       <div className="border-b border-olive-800 bg-olive-950">
@@ -38,9 +38,9 @@ export default function Header({ screen, role, user, onNavigate, onLogout }) {
             {role !== "guest" ? <NavButton on={screen === "account"} onClick={() => onNavigate("account")}>Кабінет</NavButton> : null}
             {role !== "guest" ? <NavButton on={screen === "userStats"} onClick={() => onNavigate("userStats")}>Статистика</NavButton> : null}
             {role !== "guest" ? <NavButton on={screen === "results" || screen === "result"} onClick={() => onNavigate("results")}>Результати</NavButton> : null}
-            {staff ? <NavButton on={screen === "caseForm"} onClick={() => onNavigate("caseForm")}>Кейс</NavButton> : null}
-            {staff ? <NavButton on={screen === "facilitator"} onClick={() => onNavigate("facilitator")}>Заняття</NavButton> : null}
-            {staff ? <NavButton on={screen === "dynamics" || screen === "analytics" || screen === "organizerStats"} onClick={() => onNavigate("analytics")}>Аналітика</NavButton> : null}
+            {organizer ? <NavButton on={screen === "caseForm"} onClick={() => onNavigate("caseForm")}>Кейс</NavButton> : null}
+            {organizer ? <NavButton on={screen === "facilitator"} onClick={() => onNavigate("facilitator")}>Заняття</NavButton> : null}
+            {organizer ? <NavButton on={screen === "dynamics" || screen === "analytics" || screen === "organizerStats"} onClick={() => onNavigate("analytics")}>Аналітика</NavButton> : null}
             {role === "superadmin" ? <NavButton on={screen === "moderation"} onClick={() => onNavigate("moderation")}>Модерація</NavButton> : null}
           </nav>
         </div>

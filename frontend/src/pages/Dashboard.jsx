@@ -16,7 +16,8 @@ const SCALES = [
 ];
 
 export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
-  const staff = role === "organizer" || role === "superadmin";
+  const organizer = role === "organizer";
+  const admin = role === "superadmin";
   return (
     <section>
       <div className="max-w-3xl">
@@ -79,14 +80,14 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
             <button type="button" onClick={() => onNavigate("register")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
               <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Новий учасник</span>
               <span className="mt-2 block font-display text-2xl text-zinc-100">Реєстрація →</span>
-              <span className="mt-1 block text-sm text-zinc-400">Пошта, пароль і підтвердження. Пароль зберігається як хеш</span>
+              <span className="mt-1 block text-sm text-zinc-400">Пошта, пароль, підтвердження і роль: учасник або організатор</span>
             </button>
           </>
         ) : (
           <>
             <button type="button" onClick={() => onNavigate("account")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
-              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для учасника</span>
-              <span className="mt-2 block font-display text-2xl text-zinc-100">Особистий кабінет →</span>
+              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">{role === "organizer" ? "Для організатора" : role === "superadmin" ? "Для супер-адміна" : "Для учасника"}</span>
+              <span className="mt-2 block font-display text-2xl text-zinc-100">{role === "organizer" ? "Кабінет організатора →" : role === "superadmin" ? "Кабінет супер-адміна →" : "Особистий кабінет →"}</span>
               <span className="mt-1 block text-sm text-zinc-400">Роль, пошта і перехід до збережених даних</span>
             </button>
             <button type="button" onClick={() => onNavigate("userStats")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
@@ -101,7 +102,7 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
             </button>
           </>
         )}
-        {staff ? (
+        {organizer ? (
           <>
             <button type="button" onClick={() => onNavigate("dynamics")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
               <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для організатора</span>
@@ -114,6 +115,13 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
               <span className="mt-1 block text-sm text-zinc-400">Групи, відсотки варіантів і загальна статистика сесій</span>
             </button>
           </>
+        ) : null}
+        {admin ? (
+          <button type="button" onClick={() => onNavigate("moderation")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500 sm:col-span-2">
+            <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для супер-адміна</span>
+            <span className="mt-2 block font-display text-2xl text-zinc-100">Модерація публічних кейсів →</span>
+            <span className="mt-1 block text-sm text-zinc-400">Рішення про доступ і редагування будь-якого сценарію</span>
+          </button>
         ) : null}
       </div>
 
