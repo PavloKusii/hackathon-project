@@ -35,15 +35,20 @@ function codeFromLocation() {
   return (new URLSearchParams(window.location.search).get("room") || "").trim().toUpperCase();
 }
 
-export default function GroupParticipant({ scenarios, initialCode, token, onSave, onBack }) {
+export default function GroupParticipant({ scenarios, initialCode, token, user, onSave, onAuthenticate, onBack }) {
   const entry = (initialCode || codeFromLocation() || "").trim().toUpperCase();
-  const activeRef = useRef(entry);
+  const activeRef = useRef("");
   const [draft, setDraft] = useState(entry);
   const [activeCode, setActiveCode] = useState(entry);
   const [room, setRoom] = useState(null);
   const [choice, setChoice] = useState({ stepIndex: -1, optionId: "" });
   const [note, setNote] = useState("");
-  const [joining, setJoining] = useState(Boolean(entry));
+  const [joining, setJoining] = useState(false);
+  const [pass, setPass] = useState("");
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginPending, setLoginPending] = useState(false);
   const [scores, setScores] = useState(freshScores);
   const [history, setHistory] = useState([]);
   const [bundle, setBundle] = useState(null);
@@ -74,7 +79,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
     });
     const joinCurrent = () => {
       const code = activeRef.current;
-      if (!code) return;
+      if (!code || (pass !== "guest" && pass !== "account")) return;
       setJoining(true);
       send("join_room", { code, guestId: guestIdFor(code) });
     };
@@ -83,12 +88,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
       if (!activeRef.current) return;
       setNote("Зв’язок із заняттям ще встановлюється. Залишайтесь на цій сторінці.");
     });
-    if (entry) {
-      activeRef.current = entry;
-      setActiveCode(entry);
-      setDraft(entry);
-      joinCurrent();
-    }
+    if (pass === "guest" || pass === "account") joinCurrent();
     return () => {
       offState();
       offError();
@@ -97,7 +97,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
       offConnect();
       offFail();
     };
-  }, [entry]);
+  }, [pass]);
 
   function submit(event) {
     event.preventDefault();
@@ -109,18 +109,48 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
     activeRef.current = code;
     setActiveCode(code);
     setRoom(null);
+    setPass("");
+    setLoginOpen(false);
     setNote("");
-    setJoining(true);
+    setJoining(false);
     const url = new URL(window.location.href);
     url.searchParams.set("room", code);
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-    send("join_room", { code, guestId: guestIdFor(code) });
+  }
+
+  function enterAs(mode) {
+    if (!activeCode && !draft.trim()) {
+      setNote("Введіть код кімнати.");
+      return;
+    }
+    const code = (activeCode || draft).trim().toUpperCase();
+    activeRef.current = code;
+    setActiveCode(code);
+    setPass(mode);
+    setJoining(true);
+    setNote("");
+  }
+
+  async function loginAndEnter(event) {
+    event.preventDefault();
+    if (!onAuthenticate) return;
+    setLoginPending(true);
+    setNote("");
+    try {
+      await onAuthenticate({ email: loginEmail, password: loginPassword });
+      enterAs("account");
+    } catch (error) {
+      setNote(error.message || "Вхід не вдався.");
+    } finally {
+      setLoginPending(false);
+    }
   }
 
   const scenario = scenarios.find((item) => item.id === room?.scenarioId) || (bundle?.id === room?.scenarioId ? bundle : null);
   const liveStep = scenario && room && room.phase === "live" ? scenario.steps?.[room.stepIndex] : null;
   const voted = Boolean(room && choice.stepIndex === room.stepIndex && choice.optionId);
-  const showForm = !room && !joining;
+  const showCode = !activeCode && !room && !joining;
+  const showChoice = Boolean(activeCode) && !pass && !room && !joining;
 
   const picked = voted && liveStep ? (liveStep.options || []).find((item) => item.id === choice.optionId) : null;
 
@@ -154,14 +184,14 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
   }, [voted, room?.stepIndex, choice.optionId]);
 
   useEffect(() => {
-    if (room?.phase !== "done" || !token || !history.length || savedRef.current || !onSave) return;
+    if (pass !== "account" || room?.phase !== "done" || !token || !history.length || savedRef.current || !onSave) return;
     savedRef.current = true;
     onSave({
       scenarioId: room.scenarioId,
       mode: "group",
       choices: history.map((entry) => ({ stepId: entry.stepId, optionId: entry.option.id }))
     });
-  }, [room?.phase, room?.scenarioId, token, history, onSave]);
+  }, [pass, room?.phase, room?.scenarioId, token, history, onSave]);
 
   function vote(optionId) {
     if (!room || room.phase !== "live" || voted) return;
@@ -174,17 +204,42 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Слухач</p>
-          <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Анонімний вхід</h1>
+          <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Вхід у кімнату</h1>
         </div>
         <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
       </div>
-      <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300">Ім’я не запитується. Достатньо коду кімнати з екрана викладача.</p>
-      {showForm ? (
+      <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300">Код із екрана організатора або QR відкриває кімнату. Далі оберіть гостя або вхід в обліковий запис. На телефоні обидві кнопки на всю ширину.</p>
+      {showCode ? (
         <form onSubmit={submit} className="mt-6 max-w-md border border-zinc-700 bg-zinc-900 p-5">
           <label htmlFor="room-code" className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">Код кімнати</label>
-          <input id="room-code" value={draft} onChange={(event) => setDraft(event.target.value.toUpperCase())} maxLength={6} autoComplete="off" className="mt-2 w-full border border-zinc-600 bg-zinc-950 px-3 py-3 font-mono text-2xl uppercase tracking-[0.28em] text-zinc-50" />
-          <button type="submit" className="mt-4 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Увійти анонімно</button>
+          <input id="room-code" value={draft} onChange={(event) => setDraft(event.target.value.toUpperCase())} maxLength={8} autoComplete="off" className="mt-2 w-full border border-zinc-600 bg-zinc-950 px-3 py-4 font-mono text-3xl uppercase tracking-[0.28em] text-zinc-50" />
+          <button type="submit" className="mt-4 w-full border border-olive-600 bg-olive-800 px-5 py-4 font-display text-xl tracking-[0.1em] text-olive-100">Далі</button>
         </form>
+      ) : null}
+      {showChoice ? (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => enterAs("guest")} className="border border-zinc-700 bg-zinc-900 p-5 text-left hover:border-olive-500">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Кімната {activeCode}</p>
+            <p className="mt-2 font-display text-3xl text-zinc-50">Гість</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">Анонімно. Розбір лишається на екрані і не прив’язується до профілю.</p>
+          </button>
+          <button type="button" onClick={() => (token ? enterAs("account") : setLoginOpen(true))} className="border border-olive-700 bg-olive-950 p-5 text-left hover:border-olive-500">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Кімната {activeCode}</p>
+            <p className="mt-2 font-display text-3xl text-zinc-50">{token ? "Мій обліковий запис" : "Увійти"}</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">{token ? `Результат збережеться для ${user?.login || user?.email}.` : "Логін і пароль. Розбір запишеться у ваш кабінет."}</p>
+          </button>
+          {loginOpen && !token ? (
+            <form onSubmit={loginAndEnter} className="flex flex-col gap-3 border border-zinc-800 bg-zinc-950 p-5 sm:col-span-2">
+              <label className="text-sm text-zinc-300">Пошта або логін
+                <input required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} className="mt-2 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-zinc-100" />
+              </label>
+              <label className="text-sm text-zinc-300">Пароль
+                <input required type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} className="mt-2 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-base text-zinc-100" />
+              </label>
+              <button type="submit" disabled={loginPending} className="border border-olive-600 bg-olive-800 px-5 py-4 font-display text-xl text-olive-100 disabled:opacity-50">{loginPending ? "Входимо" : "Увійти і приєднатися"}</button>
+            </form>
+          ) : null}
+        </div>
       ) : null}
       {joining && !room ? (
         <article className="mt-6 border border-olive-700 bg-olive-950 p-6">
@@ -208,7 +263,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, onSave
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Ваш розбір</p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Заняття завершено</h2>
               <p className="mt-3 text-sm leading-6 text-zinc-300">
-                {token ? "Особисті відповіді збережено на обліковому записі. Організатор бачить лише загальні відсотки." : "Ви увійшли анонімно. Цей розбір лишається на екрані і ніде не зберігається."}
+                {pass === "account" ? "Особисті відповіді збережено на обліковому записі. Організатор бачить лише загальні відсотки." : "Ви увійшли як гість. Цей розбір лишається на екрані і ніде не зберігається."}
               </p>
               <div className="mt-4"><MetricsGauges scores={scores} /></div>
               <div className="mt-4 flex flex-col gap-3">

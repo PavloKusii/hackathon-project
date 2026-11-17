@@ -26,6 +26,13 @@ function roomFromLocation() {
   return (new URLSearchParams(window.location.search).get("room") || "").trim();
 }
 
+function initialScreen() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("room")) return "participant";
+  if (params.get("staff") === "1") return "staff";
+  return "dashboard";
+}
+
 class RoomBoundary extends Component {
   constructor(props) {
     super(props);
@@ -51,7 +58,7 @@ class RoomBoundary extends Component {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState(() => (roomFromLocation() ? "participant" : "dashboard"));
+  const [screen, setScreen] = useState(initialScreen);
   const [entryCode] = useState(() => roomFromLocation());
   const [session, setSession] = useState(() => readSession());
   const [scenarios, setScenarios] = useState([]);
@@ -73,7 +80,8 @@ export default function App() {
   const [stored, setStored] = useState(false);
   const soloKey = useRef("");
   const role = session?.user?.role || "guest";
-  const staff = role === "organizer" || role === "superadmin";
+  const organizer = role === "organizer";
+  const admin = role === "superadmin";
 
   const refreshPrivate = useCallback(async (nextSession) => {
     const token = nextSession?.token;
@@ -170,13 +178,17 @@ export default function App() {
         window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
       }
     }
-    if (next === "caseForm") setEditing(null);
     setScreen(next);
     window.scrollTo(0, 0);
   }
 
   function guard(next) {
-    if ((next === "facilitator" || next === "caseForm" || next === "analytics" || next === "dynamics" || next === "organizerStats") && !staff) {
+    if (next === "caseForm") setEditing(null);
+    if ((next === "facilitator" || next === "caseForm") && !organizer) {
+      openScreen(role === "guest" ? "login" : "dashboard");
+      return;
+    }
+    if ((next === "analytics" || next === "dynamics" || next === "organizerStats") && !organizer && !admin) {
       openScreen(role === "guest" ? "login" : "dashboard");
       return;
     }
@@ -258,6 +270,13 @@ export default function App() {
     };
   }, [screen, session, run, scenarioId, stored]);
 
+  async function authenticate(payload) {
+    const data = await authRequest("/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
+    saveSession(data);
+    setSession(data);
+    return data;
+  }
+
   async function saveGroupAttempt(payload) {
     if (!session?.token) return;
     try {
@@ -299,7 +318,7 @@ export default function App() {
 
   const scenario = playable().find((item) => item.id === scenarioId) || null;
   const localCases = managed.filter((item) => item.source === "custom" && (role !== "superadmin" || item.ownerId === session?.user?.id));
-  const hostScenarios = staff ? playable() : scenarios;
+  const hostScenarios = organizer || admin ? playable() : scenarios;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -310,7 +329,7 @@ export default function App() {
           <CaseSelector
             scenarios={scenarios}
             localCases={role === "guest" ? [] : localCases}
-            onEdit={staff ? (item) => { setEditing(item); setFormError(""); openScreen("caseForm"); } : null}
+            onEdit={organizer ? (item) => { setEditing(item); setFormError(""); openScreen("caseForm"); } : null}
             loading={loading}
             loadError={loadError}
             onReload={loadScenarios}
@@ -332,7 +351,7 @@ export default function App() {
           />
         )}
         {screen === "library" && <Library onBack={() => openScreen("dashboard")} />}
-        {screen === "facilitator" && staff && (
+        {screen === "facilitator" && organizer && (
           <GroupFacilitator scenarios={hostScenarios} token={session?.token} onBack={() => openScreen("dashboard")} />
         )}
         {screen === "participant" && (
@@ -341,14 +360,17 @@ export default function App() {
               scenarios={playable()}
               initialCode={entryCode}
               token={session?.token || ""}
+              user={session?.user}
               onSave={saveGroupAttempt}
+              onAuthenticate={authenticate}
               onBack={() => openScreen("dashboard")}
             />
           </RoomBoundary>
         )}
-        {(screen === "login" || screen === "register") && (
+        {(screen === "login" || screen === "register" || screen === "staff") && (
           <AuthScreen
             mode={screen === "register" ? "register" : "login"}
+            staff={screen === "staff"}
             error={authError}
             pending={authPending}
             onSubmit={(payload) => submitAuth(screen === "register" ? "register" : "login", payload)}
@@ -357,7 +379,7 @@ export default function App() {
           />
         )}
         {screen === "account" && session && (
-          <Account session={session} onBack={() => openScreen("dashboard")} onSession={(next) => { saveSession(next); setSession(next); }} onOpen={guard} />
+          <Account session={session} attempts={attempts} sessions={sessions} onBack={() => openScreen("dashboard")} onSession={(next) => { saveSession(next); setSession(next); }} onOpen={guard} />
         )}
         {screen === "userStats" && session && (
           <UserStats user={session.user} attempts={attempts} onBack={() => openScreen("dashboard")} onStart={() => openScreen("cases")} onOpen={(item) => { setSelectedAttempt(item); openScreen("result"); }} />
@@ -374,7 +396,7 @@ export default function App() {
             onHome={() => openScreen("results")}
           />
         )}
-        {screen === "caseForm" && staff && (
+        {screen === "caseForm" && (organizer || (admin && editing)) && (
           <CaseEditor initial={editing} role={role} pending={formPending} error={formError} onCancel={() => openScreen("dashboard")} onSave={saveCase} />
         )}
         {screen === "moderation" && role === "superadmin" && (
@@ -386,7 +408,7 @@ export default function App() {
             onDecide={decide}
           />
         )}
-        {(screen === "analytics" || screen === "dynamics" || screen === "organizerStats") && staff && (
+        {(screen === "analytics" || screen === "dynamics" || screen === "organizerStats") && (organizer || admin) && (
           <OrganizerStats
             key={screen}
             sessions={sessions}
@@ -398,7 +420,10 @@ export default function App() {
       </main>
       <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 pb-8 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-600 sm:px-6">
         <span>Ethical Guard</span>
-        <span>Шкали 0–100 · максимум {BASE_SCORE}</span>
+        <span className="flex flex-wrap gap-3">
+          {role === "guest" ? <button type="button" onClick={() => openScreen("staff")} className="hover:text-olive-300">Службовий вхід</button> : null}
+          <span>Шкали 0–100 · максимум {BASE_SCORE}</span>
+        </span>
       </footer>
     </div>
   );

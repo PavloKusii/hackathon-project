@@ -200,8 +200,8 @@ io.on("connection", (socket) => {
     await refreshScenarios();
     const user = await userFromToken(token);
     const scenario = scenarioById(scenarioId);
-    if (!user || (user.role !== "organizer" && user.role !== "superadmin")) {
-      socket.emit("room_error", { message: "Групове заняття відкриває організатор або супер-адмін." });
+    if (!user || user.role !== "organizer") {
+      socket.emit("room_error", { message: "Групове заняття проводить лише організатор." });
       return;
     }
     if (!scenario || !hostAllowed(user, scenario)) {
