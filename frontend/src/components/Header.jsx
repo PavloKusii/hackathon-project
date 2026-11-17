@@ -21,6 +21,8 @@ export default function Header({ screen, onNavigate }) {
           <nav className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => onNavigate("cases")} className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] hover:border-olive-500 ${casesOn ? "border-olive-500 bg-olive-950 text-olive-200" : "border-zinc-800 text-zinc-400"}`}>Кейси</button>
             <button type="button" onClick={() => onNavigate("library")} className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] hover:border-amber-600 ${normsOn ? "border-amber-600 bg-zinc-900 text-amber-300" : "border-zinc-800 text-zinc-400"}`}>Норми</button>
+            <button type="button" onClick={() => onNavigate("userStats")} className="hidden border border-zinc-800 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400 hover:border-olive-500 sm:block">Мій прогрес</button>
+            <button type="button" onClick={() => onNavigate("register")} className="border border-olive-600 bg-olive-800 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-olive-100 hover:bg-olive-700">Вхід / реєстрація</button>
           </nav>
         </div>
       </div>

@@ -25,6 +25,10 @@ export default function Dashboard({ onNavigate }) {
           </button>
         ))}
       </div>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <button onClick={() => onNavigate("userStats")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Особистий кабінет</span><span className="mt-2 block font-display text-2xl text-zinc-100">Моя статистика →</span><span className="mt-1 block text-sm text-zinc-400">Результати й динаміка проходжень</span></button>
+        <button onClick={() => onNavigate("organizerStats")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для організатора</span><span className="mt-2 block font-display text-2xl text-zinc-100">Аналітика занять →</span><span className="mt-1 block text-sm text-zinc-400">Активність сценаріїв і групові відповіді</span></button>
+      </div>
     </section>
   );
 }

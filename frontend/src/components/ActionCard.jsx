@@ -1,4 +1,5 @@
 export default function ActionCard({ index, option, selected, collapsed, onSelect }) {
+  const art = option.image || `https://images.unsplash.com/photo-${["1521737711867-e3b97375f902", "1455390582262-044cdead277a", "1497366754035-f200968a6e72", "1500530855697-b586d89ba3ee"][index % 4]}?auto=format&fit=crop&w=900&q=80`;
   return (
     <button
       type="button"
@@ -6,8 +7,10 @@ export default function ActionCard({ index, option, selected, collapsed, onSelec
       aria-pressed={selected}
       tabIndex={collapsed ? -1 : 0}
       aria-hidden={collapsed}
-      className={`action-card group w-full border px-4 py-4 text-left sm:px-5 ${collapsed ? "is-out" : ""} ${selected ? "border-olive-500 bg-zinc-900" : "border-zinc-700 bg-zinc-900/80 hover:border-olive-500"}`}
+      className={`action-card group w-full overflow-hidden border p-0 text-left ${collapsed ? "is-out" : ""} ${selected ? "border-olive-500 bg-zinc-900" : "border-zinc-700 bg-zinc-900/80 hover:border-olive-500"}`}
     >
+      <img src={art} alt="" className="h-36 w-full object-cover sm:h-44" loading="lazy" />
+      <span className="block p-4 sm:p-5">
       <span className="flex items-start justify-between gap-3">
         <span className="flex items-center gap-3">
           <span className={`grid h-8 w-8 place-items-center border ${selected ? "border-olive-500 text-olive-300" : "border-zinc-600 text-zinc-500 group-hover:border-olive-500"}`}>
@@ -31,6 +34,7 @@ export default function ActionCard({ index, option, selected, collapsed, onSelec
       </span>
       <span className="mt-3 block font-display text-2xl tracking-wide text-zinc-50">{option.title}</span>
       <span className="mt-2 block text-sm leading-6 text-zinc-400">{option.text}</span>
+      </span>
     </button>
   );
 }

@@ -8,6 +8,9 @@ import Debriefing from "./pages/Debriefing";
 import Library from "./pages/Library";
 import GroupFacilitator from "./pages/GroupFacilitator";
 import GroupParticipant from "./pages/GroupParticipant";
+import Registration from "./pages/Registration";
+import UserStats from "./pages/UserStats";
+import OrganizerStats from "./pages/OrganizerStats";
 
 export const BASE_SCORE = 62;
 
@@ -51,6 +54,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [scenarioId, setScenarioId] = useState("");
   const [run, setRun] = useState(null);
+  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("eg-user") || "null"); } catch { return null; } });
+  const [completed, setCompleted] = useState(() => { try { return JSON.parse(localStorage.getItem("eg-completed") || "[]"); } catch { return []; } });
 
   async function loadScenarios() {
     setLoading(true);
@@ -93,6 +98,14 @@ export default function App() {
     openScreen("simulation");
   }
 
+  function finishRun() {
+    const entry = { id: `${Date.now()}`, scenarioId, scenarioTitle: scenario?.title || "Сценарій", date: new Date().toISOString(), scores: run?.scores || freshScores(), decisions: run?.history?.length || 0 };
+    const next = [entry, ...completed];
+    setCompleted(next);
+    localStorage.setItem("eg-completed", JSON.stringify(next));
+    openScreen("debrief");
+  }
+
   const scenario = scenarios.find((item) => item.id === scenarioId) || null;
 
   return (
@@ -100,6 +113,9 @@ export default function App() {
       <Header screen={screen} onNavigate={openScreen} />
       <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         {screen === "dashboard" && <Dashboard onNavigate={openScreen} />}
+        {screen === "register" && <Registration onBack={() => openScreen("dashboard")} onRegister={(value) => { setUser(value); localStorage.setItem("eg-user", JSON.stringify(value)); openScreen("dashboard"); }} />}
+        {screen === "userStats" && <UserStats user={user} completed={completed} onBack={() => openScreen("dashboard")} onStart={() => openScreen("cases")} />}
+        {screen === "organizerStats" && <OrganizerStats scenarios={scenarios} onBack={() => openScreen("dashboard")} />}
         {screen === "cases" && (
           <CaseSelector
             scenarios={scenarios}
@@ -111,7 +127,7 @@ export default function App() {
           />
         )}
         {screen === "simulation" && scenario && run && (
-          <Simulation scenario={scenario} run={run} setRun={setRun} onExit={() => openScreen("dashboard")} onDebrief={() => openScreen("debrief")} />
+          <Simulation scenario={scenario} run={run} setRun={setRun} onExit={() => openScreen("dashboard")} onDebrief={finishRun} />
         )}
         {screen === "debrief" && scenario && run && (
           <Debriefing
