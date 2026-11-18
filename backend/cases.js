@@ -65,7 +65,10 @@ export function validateCase(body) {
   if (title.length < 3) throw fail(400, "Назва кейса має містити щонайменше 3 символи.");
   if (field.length < 2) throw fail(400, "Вкажіть галузь або тему кейса.");
   const norms = normalizeNorms(body);
-  const timeLimitSeconds = limitSeconds(body?.timeLimitSeconds);
+  const timeMode = body?.timeMode === "case" || body?.timeMode === "step" ? body.timeMode : "none";
+  const timeLimitSeconds = timeMode === "none" ? 0 : limitSeconds(body?.timeLimitSeconds);
+  if (timeMode === "case" && timeLimitSeconds < 60) throw fail(400, "Для всього тесту вкажіть щонайменше одну хвилину.");
+  if (timeMode === "step" && timeLimitSeconds < 1) throw fail(400, "Вкажіть час на кожне завдання.");
   if (body?.tree) {
     const tree = validateNode(body.tree, "1", 1);
     return {
@@ -75,6 +78,7 @@ export function validateCase(body) {
       summary,
       visibility,
       norms,
+      timeMode,
       timeLimitSeconds,
       branching: true,
       depth: Number(body.depth) || treeDepth(tree),
@@ -86,7 +90,17 @@ export function validateCase(body) {
   const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
   const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
-  return { code, title, field, summary, visibility, norms, timeLimitSeconds, branching: false, steps };
+  return { code, title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
+}
+
+export function scenarioTimer(scenario) {
+  const requested = scenario?.timeMode;
+  const mode = requested === "case" || requested === "step"
+    ? requested
+    : (Number(scenario?.timeLimitSeconds) > 0 ? "case" : "none");
+  const seconds = mode === "none" ? 0 : limitSeconds(scenario?.timeLimitSeconds);
+  if (mode !== "none" && seconds < 1) return { mode: "none", seconds: 0 };
+  return { mode, seconds };
 }
 
 function limitSeconds(value) {
@@ -110,7 +124,6 @@ function validateLinearStep(step, stepIndex) {
   return {
     id: text(step?.id, 40) || `step-${stepIndex + 1}`,
     prompt,
-    timeLimitSeconds: limitSeconds(step?.timeLimitSeconds),
     options: rawOptions.map((option, optionIndex) => sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`))
   };
 }
@@ -127,7 +140,6 @@ function validateNode(node, label, level) {
     id: text(node?.id, 40) || `n-${label}`,
     label: text(node?.label, 64) || label,
     prompt,
-    timeLimitSeconds: limitSeconds(node?.timeLimitSeconds),
     options: rawOptions.map((option, optionIndex) => {
       const clean = sanitizeOption(option, optionIndex, `Ситуація ${label}`);
       const letter = BRANCH_LETTERS[optionIndex] || String(optionIndex + 1);
@@ -174,7 +186,6 @@ function flattenTree(node, list = []) {
   list.push({
     id: node.id,
     prompt: node.prompt,
-    timeLimitSeconds: node.timeLimitSeconds || 0,
     options: node.options.map((option) => {
       const { next, ...rest } = option;
       return { ...rest, nextId: next?.id || "" };
@@ -258,6 +269,7 @@ function publicView(item) {
     field: item.field,
     summary: item.summary,
     norms: item.norms || [],
+    timeMode: item.timeMode === "case" || item.timeMode === "step" ? item.timeMode : (Number(item.timeLimitSeconds) > 0 ? "case" : "none"),
     timeLimitSeconds: Number(item.timeLimitSeconds) || 0,
     steps: item.steps,
     tree: item.tree || null,
@@ -402,6 +414,7 @@ export function attachCaseRoutes(app, hooks = {}) {
         target.field = input.field;
         target.summary = input.summary;
         target.norms = input.norms;
+        target.timeMode = input.timeMode || "none";
         target.timeLimitSeconds = input.timeLimitSeconds || 0;
         target.steps = input.steps;
         target.tree = input.tree || null;

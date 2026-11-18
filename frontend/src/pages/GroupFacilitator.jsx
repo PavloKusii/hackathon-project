@@ -205,7 +205,8 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
                 </div>
               </div>
               <p className="mt-4 break-all font-mono text-xs text-zinc-400">{joinUrl}</p>
-              {room.phase === "live" && room.endsAt ? <div className="mt-4 max-w-xs"><TimerReadout endsAt={room.endsAt} scope={room.timerScope} /></div> : null}
+              {room.phase === "live" && room.endsAt ? <div className="mt-4"><TimerReadout endsAt={room.endsAt} scope={room.timerScope} /></div> : null}
+              {room.phase === "live" && room.stepClockPaused ? <p className="mt-4 text-sm leading-6 text-olive-200">Час першого завдання вийшов. Слухачі з розгалуженням ідуть далі власними гілками, кожна зі своїм відліком.</p> : null}
               {room.phase === "done" && room.timedOut ? <p className="mt-4 text-sm leading-6 text-amber-200">Час вийшов. Заняття закрито, слухачі бачать власний розбір відповідей.</p> : null}
               <div className="mt-4 flex flex-wrap gap-3">
                 <button type="button" onClick={copyLink} className={`border px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] hover:border-olive-500 ${copied ? "border-olive-500 bg-olive-950 text-olive-200" : "border-zinc-600 text-zinc-200"}`}>{copied ? "Скопійовано" : "Копіювати посилання"}</button>

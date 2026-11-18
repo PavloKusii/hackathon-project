@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import crypto from "crypto";
 import os from "os";
 import { attachAuth, userFromToken } from "./auth.js";
-import { appendSession, attachCaseRoutes, hostAllowed, loadCatalog } from "./cases.js";
+import { appendSession, attachCaseRoutes, hostAllowed, loadCatalog, scenarioTimer } from "./cases.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -117,6 +117,7 @@ function playerState(room) {
     named: Boolean(room.named),
     endsAt: room.phase === "live" ? (room.endsAt || 0) : 0,
     timerScope: room.phase === "live" ? (room.timerScope || "") : "",
+    stepClockPaused: Boolean(room.stepClockPaused),
     timedOut: Boolean(room.timedOut)
   };
 }
@@ -132,12 +133,10 @@ function armRoomTimer(room) {
     roomTimers.delete(room.code);
     return;
   }
-  const scenario = scenarioById(room.scenarioId);
-  const step = scenario?.steps?.[room.stepIndex];
   const marks = [];
-  if (room.caseEndsAt) marks.push({ at: room.caseEndsAt, scope: "case" });
-  if (step?.timeLimitSeconds && room.stepStartedAt) {
-    marks.push({ at: room.stepStartedAt + step.timeLimitSeconds * 1000, scope: "step" });
+  if (room.timeMode === "case" && room.caseEndsAt) marks.push({ at: room.caseEndsAt, scope: "case" });
+  if (room.timeMode === "step" && !room.stepClockPaused && room.limitSeconds && room.stepStartedAt) {
+    marks.push({ at: room.stepStartedAt + room.limitSeconds * 1000, scope: "step" });
   }
   if (!marks.length) {
     roomTimers.delete(room.code);
@@ -161,7 +160,23 @@ async function finishOnTime(code) {
     broadcast(room);
     return;
   }
+  const scenario = scenarioById(room.scenarioId);
+  const total = sharedSteps(scenario);
   snapshotStep(room);
+  if (room.timeMode === "step" && room.stepIndex < total - 1) {
+    room.stepIndex += 1;
+    room.stepStartedAt = Date.now();
+    clearVotes(room);
+    armRoomTimer(room);
+    broadcast(room);
+    return;
+  }
+  if (room.timeMode === "step" && scenario?.tree) {
+    room.stepClockPaused = true;
+    armRoomTimer(room);
+    broadcast(room);
+    return;
+  }
   room.phase = "done";
   room.timedOut = true;
   armRoomTimer(room);
@@ -285,7 +300,10 @@ io.on("connection", (socket) => {
       timerScope: "",
       timedOut: false,
       caseEndsAt: 0,
-      stepStartedAt: 0
+      stepStartedAt: 0,
+      timeMode: "none",
+      limitSeconds: 0,
+      stepClockPaused: false
     };
     rooms.set(code, room);
     sockets.set(socket.id, { role: "host", code, token: roomToken });
@@ -363,10 +381,14 @@ io.on("connection", (socket) => {
     }
     if (room.phase === "lobby") {
       const now = Date.now();
+      const timer = scenarioTimer(scenario);
       room.phase = "live";
       room.stepIndex = 0;
       room.stepStartedAt = now;
-      room.caseEndsAt = scenario.timeLimitSeconds ? now + scenario.timeLimitSeconds * 1000 : 0;
+      room.timeMode = timer.mode;
+      room.limitSeconds = timer.seconds;
+      room.caseEndsAt = timer.mode === "case" ? now + timer.seconds * 1000 : 0;
+      room.stepClockPaused = false;
       room.timedOut = false;
       clearVotes(room);
       armRoomTimer(room);

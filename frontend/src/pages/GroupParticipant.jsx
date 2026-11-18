@@ -167,34 +167,55 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const showChoice = Boolean(activeCode) && !pass && !room && !joining;
 
   const picked = voted && liveStep ? (liveStep.options || []).find((item) => item.id === choice.optionId) : null;
-  const personalLimit = Boolean(branching && liveStep && scenario?.tree && liveStep.id !== scenario.tree.id && liveStep.timeLimitSeconds);
+  const pickedRef = useRef(null);
+  pickedRef.current = picked;
+  const stepMode = (scenario?.timeMode === "step" || room?.timerScope === "step") && Number(scenario?.timeLimitSeconds) > 0;
+  const onPersonal = Boolean(stepMode && branching && liveStep && scenario?.tree && liveStep.id !== scenario.tree.id && room?.phase === "live" && !selfDone);
   const sharedEnds = Number(room?.endsAt) || 0;
-  const visibleEnds = [sharedEnds, localEndsAt].filter((value) => value > 0);
-  const endsAt = visibleEnds.length ? Math.min(...visibleEnds) : 0;
-  const timerScope = endsAt && localEndsAt && (!sharedEnds || localEndsAt <= sharedEnds) ? "step" : (room?.timerScope || "case");
+  const endsAt = onPersonal ? localEndsAt : sharedEnds;
+  const timerScope = onPersonal || room?.timerScope === "step" ? "step" : "case";
   const finished = room?.phase === "done" || selfDone;
 
   useEffect(() => {
-    if (!personalLimit || room?.phase !== "live" || selfDone) {
+    if (!onPersonal) {
       setLocalEndsAt(0);
       return undefined;
     }
-    const ends = Date.now() + liveStep.timeLimitSeconds * 1000;
+    const ends = Date.now() + Number(scenario.timeLimitSeconds) * 1000;
     setLocalEndsAt(ends);
-    const id = window.setTimeout(() => setSelfDone(true), Math.max(0, ends - Date.now()));
+    const id = window.setTimeout(() => {
+      const latest = pickedRef.current;
+      if (latest?.next) {
+        setBranchId(latest.next.id);
+        setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+        return;
+      }
+      setSelfDone(true);
+    }, Math.max(0, ends - Date.now()));
     return () => window.clearTimeout(id);
-  }, [personalLimit, room?.phase, selfDone, liveStep?.id, liveStep?.timeLimitSeconds]);
+  }, [onPersonal, liveStep?.id, scenario?.timeLimitSeconds, room?.stepIndex]);
 
   useEffect(() => {
-    if (room?.phase !== "live" || selfDone || !sharedEnds) return undefined;
-    const wait = sharedEnds - Date.now();
-    if (wait <= 0) {
+    if (room?.phase !== "live" || selfDone || !sharedEnds || onPersonal) return undefined;
+    const wait = Math.max(0, sharedEnds - Date.now());
+    const id = window.setTimeout(() => {
+      if (room.timerScope === "step" && !branching && room.stepIndex < (room.stepCount || 1) - 1) return;
+      if (room.timerScope === "step" && branching) return;
       setSelfDone(true);
-      return undefined;
-    }
-    const id = window.setTimeout(() => setSelfDone(true), wait);
+    }, wait);
     return () => window.clearTimeout(id);
-  }, [room?.phase, selfDone, sharedEnds]);
+  }, [room?.phase, room?.timerScope, room?.stepIndex, room?.stepCount, selfDone, sharedEnds, onPersonal, branching]);
+
+  useEffect(() => {
+    if (!room?.stepClockPaused || room.phase !== "live" || selfDone || !branching || !liveStep || !scenario?.tree) return;
+    if (liveStep.id !== scenario.tree.id) return;
+    if (picked?.next) {
+      setBranchId(picked.next.id);
+      setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+      return;
+    }
+    setSelfDone(true);
+  }, [room?.stepClockPaused, room?.phase, room?.stepIndex, selfDone, branching, liveStep, scenario?.tree, picked]);
 
   useEffect(() => {
     if (!voted || !picked || !room) return;
@@ -340,7 +361,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
           ) : null}
           {liveStep && !finished ? (
             <div className="mt-4">
-              {endsAt ? <div className="mb-4 max-w-xs"><TimerReadout endsAt={endsAt} scope={timerScope} /></div> : null}
+              {endsAt ? <div className="mb-4"><TimerReadout endsAt={endsAt} scope={timerScope} /></div> : null}
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                 {scenario.code} · {branching ? `гілка ${liveStep.label || ""}` : `крок ${String(room.stepIndex + 1).padStart(2, "0")} / ${String(room.stepCount || scenario.steps.length).padStart(2, "0")}`}
               </p>

@@ -141,7 +141,7 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
               <p className="font-mono text-xs text-olive-400">{item.code}</p>
               <h3 className="mt-2 font-display text-3xl leading-none text-zinc-50">{item.title}</h3>
               <p className="mt-3 flex-1 text-sm leading-6 text-zinc-400">{item.summary}</p>
-              <button type="button" onClick={() => onStart(item.id)} className="mt-4 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100">{limitCaption(item.timeLimitSeconds) ? `Почати · ${limitCaption(item.timeLimitSeconds)}` : "Почати"}</button>
+              <button type="button" onClick={() => onStart(item.id)} className="mt-4 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100">{limitCaption(item) ? `Почати · ${limitCaption(item)}` : "Почати"}</button>
             </article>
           ))}
         </div>

@@ -11,41 +11,60 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
   const last = scenario.tree ? !picked?.next : run.stepIndex >= scenario.steps.length - 1;
   const depth = scenario.tree ? (scenario.depth || "гілки") : scenario.steps.length;
-  const caseLimit = Number(scenario.timeLimitSeconds) || 0;
-  const stepLimit = Number(step?.timeLimitSeconds) || 0;
+  const timeMode = scenario.timeMode === "case" || scenario.timeMode === "step"
+    ? scenario.timeMode
+    : (Number(scenario.timeLimitSeconds) > 0 ? "case" : "none");
+  const timeLimit = timeMode === "none" ? 0 : (Number(scenario.timeLimitSeconds) || 0);
   const caseStartRef = useRef(Date.now());
-  const endedRef = useRef(false);
+  const runRef = useRef(run);
+  const handledRef = useRef(0);
   const [stepStart, setStepStart] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
+  runRef.current = run;
 
   useEffect(() => {
     setStepStart(Date.now());
   }, [step?.id]);
 
   useEffect(() => {
-    if (!caseLimit && !stepLimit) return undefined;
+    if (!timeLimit) return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(id);
-  }, [caseLimit, stepLimit, step?.id]);
+  }, [timeLimit, step?.id]);
 
-  const caseEndsAt = caseLimit ? caseStartRef.current + caseLimit * 1000 : 0;
-  const stepEndsAt = stepLimit ? stepStart + stepLimit * 1000 : 0;
-  let endsAt = 0;
-  let timerScope = "";
-  if (caseEndsAt && (!stepEndsAt || caseEndsAt <= stepEndsAt)) {
-    endsAt = caseEndsAt;
-    timerScope = "case";
-  } else if (stepEndsAt) {
-    endsAt = stepEndsAt;
-    timerScope = "step";
-  }
+  const endsAt = !timeLimit ? 0 : timeMode === "case"
+    ? caseStartRef.current + timeLimit * 1000
+    : stepStart + timeLimit * 1000;
 
   useEffect(() => {
-    if (!endsAt || endedRef.current || endsAt > now) return;
-    endedRef.current = true;
-    setRun((current) => ({ ...current, timedOut: true }));
-    onDebrief();
-  }, [endsAt, now, onDebrief, setRun]);
+    if (!endsAt || endsAt > now || handledRef.current === endsAt) return;
+    handledRef.current = endsAt;
+    const current = runRef.current;
+    if (timeMode === "case") {
+      setRun({ ...current, timedOut: true });
+      onDebrief();
+      return;
+    }
+    const currentStep = scenario.tree ? findNode(scenario.tree, current.nodeId) || scenario.tree : scenario.steps[current.stepIndex];
+    const chosen = current.revealed ? currentStep?.options?.find((item) => item.id === current.lockedId) : null;
+    if (scenario.tree) {
+      if (chosen?.next) {
+        setRun({ ...current, nodeId: chosen.next.id, revealed: false, lockedId: "" });
+        window.scrollTo(0, 0);
+        return;
+      }
+      setRun({ ...current, timedOut: true });
+      onDebrief();
+      return;
+    }
+    if (current.stepIndex >= scenario.steps.length - 1) {
+      setRun({ ...current, timedOut: true });
+      onDebrief();
+      return;
+    }
+    setRun({ ...current, stepIndex: current.stepIndex + 1, revealed: false, lockedId: "" });
+    window.scrollTo(0, 0);
+  }, [endsAt, now, onDebrief, scenario, setRun, timeMode]);
 
   useEffect(() => {
     if (!run.revealed) return;
@@ -105,6 +124,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
           {scenario.code} · {scenario.tree ? `гілка ${step?.label || run.history.length + 1}` : `крок ${String(run.stepIndex + 1).padStart(2, "0")} / ${String(depth).padStart(2, "0")}`}
         </p>
       </div>
+      {endsAt ? <div className="mt-4"><TimerReadout endsAt={endsAt} scope={timeMode} /></div> : null}
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="order-2 lg:order-1">
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-olive-400">{scenario.field}</p>
@@ -137,8 +157,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
           <div className="mt-4">
             <MetricsGauges scores={run.scores} />
           </div>
-          {endsAt ? <div className="mt-4"><TimerReadout endsAt={endsAt} scope={timerScope} /></div> : null}
-          <p className="mt-4 text-xs leading-5 text-zinc-500">{endsAt ? "Коли відлік доходить до нуля, проходження закривається і відкривається розбір." : "Кожна шкала від 0 до 100 і стартує зі 100. Час на крок не обмежений."}</p>
+          <p className="mt-4 text-xs leading-5 text-zinc-500">{timeMode === "case" ? "Коли час на весь тест виходить, проходження закривається і відкривається розбір." : timeMode === "step" ? "Коли час завдання виходить, відкривається наступний етап. На останньому етапі відкривається розбір." : "Кожна шкала від 0 до 100 і стартує зі 100. Час на крок не обмежений."}</p>
         </aside>
       </div>
     </section>
