@@ -149,6 +149,7 @@ function firstGap(node) {
 export default function CaseEditor({ initial, role, pending, error, onSave, onCancel }) {
   const [form, setForm] = useState(() => fromCase(initial));
   const [selectedId, setSelectedId] = useState("");
+  const [optionFocus, setOptionFocus] = useState("");
   const [draft, setDraft] = useState(null);
   const [graphNote, setGraphNote] = useState("");
   const [localError, setLocalError] = useState("");
@@ -185,6 +186,18 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     const node = findNode(tree, id);
     setForm((current) => ({ ...current, tree }));
     setSelectedId(node ? id : "");
+    setOptionFocus("");
+    setDraft(node ? draftFromNode(node) : null);
+    setGraphNote("");
+  }
+
+  function openOption(nodeId, optionId) {
+    const tree = storedTree();
+    const node = findNode(tree, nodeId);
+    const option = node?.options?.find((item) => item.id === optionId);
+    setForm((current) => ({ ...current, tree }));
+    setSelectedId(node ? nodeId : "");
+    setOptionFocus(option ? optionId : "");
     setDraft(node ? draftFromNode(node) : null);
     setGraphNote("");
   }
@@ -217,6 +230,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
 
   function removeOption(index) {
     if (!draft || draft.options.length <= 2) return;
+    if (draft.options[index]?.id === optionFocus) setOptionFocus("");
     changeDraft(
       { ...draft, options: draft.options.filter((_, optionIndex) => optionIndex !== index) },
       "Варіант і його гілку прибрано зі схеми."
@@ -254,6 +268,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         const node = findNode(tree, gap.id);
         setForm((current) => ({ ...current, tree }));
         setSelectedId(gap.id);
+        setOptionFocus("");
         setDraft(node ? draftFromNode(node) : null);
         return;
       }
@@ -321,11 +336,11 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
-                <p className="mt-1 text-sm text-zinc-400">Ситуація 1 уже з’єднана з варіантами А і Б. Клік по блоку відкриває форму цієї гілки.</p>
+                <p className="mt-1 text-sm text-zinc-400">Клік по ситуації відкриває її текст. Клік по варіанту або стрілці відкриває лише цю відповідь: бали, наслідки і перехід.</p>
               </div>
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} ситуацій</p>
             </div>
-            <ScenarioGraph tree={liveTree || form.tree} selectedId={selectedId} onSelect={openNode} />
+            <ScenarioGraph tree={liveTree || form.tree} selectedId={selectedId} selectedOptionId={optionFocus} onSelectNode={openNode} onSelectOption={openOption} />
           </section>
         ) : null}
 
@@ -334,46 +349,65 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Ситуація {selected.label}</p>
-                <h2 className="mt-1 font-display text-3xl text-zinc-50">Редагування вузла</h2>
+                <h2 className="mt-1 font-display text-3xl text-zinc-50">{draft.options.some((option) => option.id === optionFocus) ? `Варіант ${optionLetter(draft.options.findIndex((option) => option.id === optionFocus))}` : "Ситуація"}</h2>
               </div>
-              <button type="button" onClick={() => { applyDraft(); setSelectedId(""); setDraft(null); }} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-300">Закрити</button>
+              <button type="button" onClick={() => { applyDraft(); setSelectedId(""); setOptionFocus(""); setDraft(null); }} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-300">Закрити</button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              <label className="block text-sm text-zinc-300">Текст ситуації
-                <textarea value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
-              </label>
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіанти відповіді</p>
-                <button type="button" onClick={addOption} className="border border-olive-600 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-olive-100">+ Додати варіант</button>
-              </div>
-              <div className="mt-3 flex flex-col gap-4">
-                {draft.options.map((option, index) => (
-                  <div key={option.id} className="border border-zinc-800 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіант {optionLetter(index)}</p>
-                      <button type="button" onClick={() => removeOption(index)} disabled={draft.options.length <= 2} className="border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-40">− Видалити</button>
-                    </div>
-                    <OptionFields option={option} onChange={(partial) => setDraft({
-                      ...draft,
-                      options: draft.options.map((item, optionIndex) => (optionIndex === index ? { ...item, ...partial } : item))
-                    })} />
-                    <div className="mt-3 border border-zinc-800 bg-zinc-900/70 p-3">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">Перехід</p>
-                      {option.next ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-3">
-                          <button type="button" onClick={() => openNode(option.next.id)} className="text-left text-sm text-olive-200 underline decoration-zinc-700 underline-offset-4">
-                            Веде до ситуації {option.next.label}
+              {(() => {
+                const focusIndex = draft.options.findIndex((option) => option.id === optionFocus);
+                const option = focusIndex >= 0 ? draft.options[focusIndex] : null;
+                if (!option) {
+                  return (
+                    <>
+                      <label className="block text-sm text-zinc-300">Текст ситуації
+                        <textarea value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
+                      </label>
+                      <div className="mt-5 flex items-center justify-between gap-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіанти відповіді</p>
+                        <button type="button" onClick={addOption} className="border border-olive-600 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-olive-100">+ Додати варіант</button>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {draft.options.map((item, index) => (
+                          <button key={item.id} type="button" onClick={() => setOptionFocus(item.id)} className="border border-zinc-800 px-3 py-3 text-left hover:border-olive-600">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-olive-300">Варіант {optionLetter(index)}</span>
+                            <span className="mt-1 block text-sm text-zinc-200">{item.title || "Ще без назви"}</span>
                           </button>
-                          <button type="button" onClick={() => endBranch(index)} className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-400">− Прибрати етап</button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => extendOption(index)} className="mt-2 border border-olive-700 px-3 py-2 text-sm text-olive-100">+ Наступний етап</button>
-                      )}
+                        ))}
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <button type="button" onClick={() => setOptionFocus("")} className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">До ситуації {selected.label}</button>
+                    <div className="mt-4 border border-zinc-800 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіант {optionLetter(focusIndex)}</p>
+                        <button type="button" onClick={() => removeOption(focusIndex)} disabled={draft.options.length <= 2} className="border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-40">− Видалити</button>
+                      </div>
+                      <OptionFields option={option} onChange={(partial) => setDraft({
+                        ...draft,
+                        options: draft.options.map((item, optionIndex) => (optionIndex === focusIndex ? { ...item, ...partial } : item))
+                      })} />
+                      <div className="mt-3 border border-zinc-800 bg-zinc-900/70 p-3">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">Перехід</p>
+                        {option.next ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                            <button type="button" onClick={() => openNode(option.next.id)} className="text-left text-sm text-olive-200 underline decoration-zinc-700 underline-offset-4">
+                              Веде до ситуації {option.next.label}
+                            </button>
+                            <button type="button" onClick={() => endBranch(focusIndex)} className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-400">− Прибрати етап</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => extendOption(focusIndex)} className="mt-2 border border-olive-700 px-3 py-2 text-sm text-olive-100">+ Наступний етап</button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до +40. Підсумок учасника лишається в межах 0–100.</p>
+                    <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до +40. Підсумок учасника лишається в межах 0–100.</p>
+                  </>
+                );
+              })()}
             </div>
             <div className="border-t border-zinc-800 px-5 py-4">
               <p className="mb-3 min-h-5 text-sm text-olive-300">{graphNote}</p>
