@@ -106,11 +106,14 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
       window.scrollTo(0, 0);
       return;
     }
-    if (last) {
+    const nextStepId = picked?.nextStepId;
+    const nextStepIndex = scenario.steps.findIndex((item) => item.id === nextStepId);
+    if (nextStepId && nextStepIndex < 0) return;
+    if (!nextStepId && last) {
       onDebrief();
       return;
     }
-    setRun({ ...run, stepIndex: run.stepIndex + 1, revealed: false, lockedId: "" });
+    setRun({ ...run, stepIndex: nextStepId ? nextStepIndex : run.stepIndex + 1, revealed: false, lockedId: "" });
     window.scrollTo(0, 0);
   }
 

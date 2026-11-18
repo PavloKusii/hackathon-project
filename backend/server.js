@@ -394,7 +394,21 @@ io.on("connection", (socket) => {
       armRoomTimer(room);
     } else if (room.phase === "live") {
       snapshotStep(room);
-      if (room.stepIndex >= total - 1) {
+      const currentStep = scenario.steps[room.stepIndex];
+      const votes = [...room.guests.values()].reduce((counts, guest) => {
+        if (guest.optionId) counts.set(guest.optionId, (counts.get(guest.optionId) || 0) + 1);
+        return counts;
+      }, new Map());
+      const selectedOptionId = [...votes.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
+      const selectedOption = currentStep?.options?.find((option) => option.id === selectedOptionId);
+      const nextStepId = selectedOption?.nextStepId;
+      const nextStepIndex = nextStepId
+        ? scenario.steps.findIndex((step) => step.id === nextStepId)
+        : -1;
+      if (nextStepIndex >= 0) {
+        room.stepIndex = nextStepIndex;
+        clearVotes(room);
+      } else if ((nextStepId && nextStepIndex < 0) || room.stepIndex >= total - 1) {
         room.phase = "done";
       } else {
         room.stepIndex += 1;
