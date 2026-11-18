@@ -114,8 +114,59 @@ function playerState(room) {
     phase: room.phase,
     participantCount: onlineCount(room),
     groupLabel: room.groupLabel || "",
-    named: Boolean(room.named)
+    named: Boolean(room.named),
+    endsAt: room.phase === "live" ? (room.endsAt || 0) : 0,
+    timerScope: room.phase === "live" ? (room.timerScope || "") : "",
+    timedOut: Boolean(room.timedOut)
   };
+}
+
+const roomTimers = new Map();
+
+function armRoomTimer(room) {
+  const previous = roomTimers.get(room.code);
+  if (previous) clearTimeout(previous);
+  room.endsAt = 0;
+  room.timerScope = "";
+  if (room.phase !== "live") {
+    roomTimers.delete(room.code);
+    return;
+  }
+  const scenario = scenarioById(room.scenarioId);
+  const step = scenario?.steps?.[room.stepIndex];
+  const marks = [];
+  if (room.caseEndsAt) marks.push({ at: room.caseEndsAt, scope: "case" });
+  if (step?.timeLimitSeconds && room.stepStartedAt) {
+    marks.push({ at: room.stepStartedAt + step.timeLimitSeconds * 1000, scope: "step" });
+  }
+  if (!marks.length) {
+    roomTimers.delete(room.code);
+    return;
+  }
+  marks.sort((left, right) => left.at - right.at);
+  room.endsAt = marks[0].at;
+  room.timerScope = marks[0].scope;
+  const wait = Math.max(0, marks[0].at - Date.now());
+  const handle = setTimeout(() => {
+    finishOnTime(room.code).catch(() => {});
+  }, Math.min(wait, 2147483647));
+  roomTimers.set(room.code, handle);
+}
+
+async function finishOnTime(code) {
+  const room = rooms.get(code);
+  if (!room || room.phase !== "live") return;
+  if (room.endsAt && room.endsAt - Date.now() > 400) {
+    armRoomTimer(room);
+    broadcast(room);
+    return;
+  }
+  snapshotStep(room);
+  room.phase = "done";
+  room.timedOut = true;
+  armRoomTimer(room);
+  broadcast(room);
+  await persistRoom(room);
 }
 
 function hostState(room) {
@@ -229,7 +280,12 @@ io.on("connection", (socket) => {
       named: Boolean(named),
       groupLabel: named || new Intl.DateTimeFormat("uk-UA", { dateStyle: "short", timeStyle: "short" }).format(new Date()),
       createdAt: new Date().toISOString(),
-      persisted: false
+      persisted: false,
+      endsAt: 0,
+      timerScope: "",
+      timedOut: false,
+      caseEndsAt: 0,
+      stepStartedAt: 0
     };
     rooms.set(code, room);
     sockets.set(socket.id, { role: "host", code, token: roomToken });
@@ -306,17 +362,24 @@ io.on("connection", (socket) => {
       return;
     }
     if (room.phase === "lobby") {
+      const now = Date.now();
       room.phase = "live";
       room.stepIndex = 0;
+      room.stepStartedAt = now;
+      room.caseEndsAt = scenario.timeLimitSeconds ? now + scenario.timeLimitSeconds * 1000 : 0;
+      room.timedOut = false;
       clearVotes(room);
+      armRoomTimer(room);
     } else if (room.phase === "live") {
       snapshotStep(room);
       if (room.stepIndex >= total - 1) {
         room.phase = "done";
       } else {
         room.stepIndex += 1;
+        room.stepStartedAt = Date.now();
         clearVotes(room);
       }
+      armRoomTimer(room);
     }
     broadcast(room);
     if (room.phase === "done") await persistRoom(room);

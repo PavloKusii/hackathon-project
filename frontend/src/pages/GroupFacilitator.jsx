@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { ShareChart } from "../components/Charts";
+import TimerReadout from "../components/TimerReadout";
 import { send, subscribe } from "../services/socketService";
 
 const STORAGE = "eg-host";
@@ -204,6 +205,8 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
                 </div>
               </div>
               <p className="mt-4 break-all font-mono text-xs text-zinc-400">{joinUrl}</p>
+              {room.phase === "live" && room.endsAt ? <div className="mt-4 max-w-xs"><TimerReadout endsAt={room.endsAt} scope={room.timerScope} /></div> : null}
+              {room.phase === "done" && room.timedOut ? <p className="mt-4 text-sm leading-6 text-amber-200">Час вийшов. Заняття закрито, слухачі бачать власний розбір відповідей.</p> : null}
               <div className="mt-4 flex flex-wrap gap-3">
                 <button type="button" onClick={copyLink} className={`border px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] hover:border-olive-500 ${copied ? "border-olive-500 bg-olive-950 text-olive-200" : "border-zinc-600 text-zinc-200"}`}>{copied ? "Скопійовано" : "Копіювати посилання"}</button>
                 <button type="button" onClick={advance} disabled={room.phase === "done"} className="border border-olive-600 bg-olive-800 px-4 py-3 font-display text-xl tracking-[0.08em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">

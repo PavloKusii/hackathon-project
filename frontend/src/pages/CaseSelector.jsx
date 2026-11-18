@@ -10,7 +10,7 @@ export default function CaseSelector({ scenarios, localCases = [], loading, load
       </div>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-l-4 border-olive-500 bg-zinc-900/80 px-4 py-4">
         <p className="text-sm leading-6 text-zinc-300" aria-live="polite">
-          {loading ? "Відкриваємо список кейсів." : loadError || "Публічні кейси відкриті без реєстрації. Час на проходження не обмежений. Гість не залишає запису, обліковий запис зберігає розбір."}
+          {loading ? "Відкриваємо список кейсів." : loadError || "Публічні кейси відкриті без реєстрації. Час обмежений лише якщо організатор задав таймер. Гість не залишає запису, обліковий запис зберігає розбір."}
         </p>
         <button type="button" onClick={onReload} disabled={loading} className="shrink-0 border border-olive-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-olive-200 hover:border-olive-500 disabled:opacity-50">
           Оновити список

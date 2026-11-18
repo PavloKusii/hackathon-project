@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import MetricsGauges from "../components/MetricsGauges";
 import ActionCard from "../components/ActionCard";
 import FeedbackPanel from "../components/FeedbackPanel";
+import TimerReadout from "../components/TimerReadout";
 import { findNode } from "../scenarioTree";
 import { clampScore } from "../scores";
 
@@ -10,6 +11,41 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
   const last = scenario.tree ? !picked?.next : run.stepIndex >= scenario.steps.length - 1;
   const depth = scenario.tree ? (scenario.depth || "гілки") : scenario.steps.length;
+  const caseLimit = Number(scenario.timeLimitSeconds) || 0;
+  const stepLimit = Number(step?.timeLimitSeconds) || 0;
+  const caseStartRef = useRef(Date.now());
+  const endedRef = useRef(false);
+  const [stepStart, setStepStart] = useState(Date.now());
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    setStepStart(Date.now());
+  }, [step?.id]);
+
+  useEffect(() => {
+    if (!caseLimit && !stepLimit) return undefined;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [caseLimit, stepLimit, step?.id]);
+
+  const caseEndsAt = caseLimit ? caseStartRef.current + caseLimit * 1000 : 0;
+  const stepEndsAt = stepLimit ? stepStart + stepLimit * 1000 : 0;
+  let endsAt = 0;
+  let timerScope = "";
+  if (caseEndsAt && (!stepEndsAt || caseEndsAt <= stepEndsAt)) {
+    endsAt = caseEndsAt;
+    timerScope = "case";
+  } else if (stepEndsAt) {
+    endsAt = stepEndsAt;
+    timerScope = "step";
+  }
+
+  useEffect(() => {
+    if (!endsAt || endedRef.current || endsAt > now) return;
+    endedRef.current = true;
+    setRun((current) => ({ ...current, timedOut: true }));
+    onDebrief();
+  }, [endsAt, now, onDebrief, setRun]);
 
   useEffect(() => {
     if (!run.revealed) return;
@@ -79,7 +115,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
             ))}
           </div>
           <article className="mt-5 border border-zinc-800 bg-zinc-950/80 p-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ситуація · без обмеження часу</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">{endsAt ? "Ситуація" : "Ситуація · без обмеження часу"}</p>
             <p className="mt-3 text-base leading-7 text-zinc-200">{step.prompt}</p>
           </article>
           <div className="mt-4 flex flex-col gap-3">
@@ -101,7 +137,8 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
           <div className="mt-4">
             <MetricsGauges scores={run.scores} />
           </div>
-          <p className="mt-4 text-xs leading-5 text-zinc-500">Кожна шкала від 0 до 100 і стартує зі 100. Час на крок не обмежений.</p>
+          {endsAt ? <div className="mt-4"><TimerReadout endsAt={endsAt} scope={timerScope} /></div> : null}
+          <p className="mt-4 text-xs leading-5 text-zinc-500">{endsAt ? "Коли відлік доходить до нуля, проходження закривається і відкривається розбір." : "Кожна шкала від 0 до 100 і стартує зі 100. Час на крок не обмежений."}</p>
         </aside>
       </div>
     </section>

@@ -1,9 +1,10 @@
 import { METRICS } from "../components/MetricsGauges";
 import { ROLE_LABELS } from "../services/authService";
+import { limitCaption } from "../timer";
 
 const STEPS = [
   ["01", "Оберіть відкритий кейс", "Публічні ситуації доступні гостю, учаснику, організатору і супер-адміну без окремого дозволу."],
-  ["02", "Пройдіть кроки без таймера", "На кожному кроці є кілька дій. Обмеження часу немає: рішення можна обдумати і зафіксувати, коли воно готове."],
+  ["02", "Пройдіть кроки", "На кожному кроці є кілька дій. Якщо організатор задав час на весь кейс або на окреме завдання, на екрані йде зворотний відлік. Без таймера рішення можна обдумати спокійно."],
   ["03", "Прочитайте розбір", "Після вибору видно пояснення, відкладені наслідки, правову опору і те, як змінилися три шкали."],
   ["04", "Збережіть слід, якщо ви в системі", "Гість проходить кейс повністю, але запис не створюється. Учасник, організатор і супер-адмін бачать історію в кабінеті, статистиці та результатах."],
   ["05", "Група лишається анонімною", "Організатор задає назву групи або лишає сесію за датою й часом. Він бачить лише відсотки виборів, а кожен учасник — власний розбір."]
@@ -140,7 +141,7 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
               <p className="font-mono text-xs text-olive-400">{item.code}</p>
               <h3 className="mt-2 font-display text-3xl leading-none text-zinc-50">{item.title}</h3>
               <p className="mt-3 flex-1 text-sm leading-6 text-zinc-400">{item.summary}</p>
-              <button type="button" onClick={() => onStart(item.id)} className="mt-4 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100">Почати без обмеження часу</button>
+              <button type="button" onClick={() => onStart(item.id)} className="mt-4 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100">{limitCaption(item.timeLimitSeconds) ? `Почати · ${limitCaption(item.timeLimitSeconds)}` : "Почати"}</button>
             </article>
           ))}
         </div>

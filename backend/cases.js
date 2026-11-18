@@ -65,6 +65,7 @@ export function validateCase(body) {
   if (title.length < 3) throw fail(400, "Назва кейса має містити щонайменше 3 символи.");
   if (field.length < 2) throw fail(400, "Вкажіть галузь або тему кейса.");
   const norms = normalizeNorms(body);
+  const timeLimitSeconds = limitSeconds(body?.timeLimitSeconds);
   if (body?.tree) {
     const tree = validateNode(body.tree, "1", 1);
     return {
@@ -74,6 +75,7 @@ export function validateCase(body) {
       summary,
       visibility,
       norms,
+      timeLimitSeconds,
       branching: true,
       depth: Number(body.depth) || treeDepth(tree),
       optionCount: Number(body.optionCount) || (tree.options || []).length,
@@ -84,7 +86,13 @@ export function validateCase(body) {
   const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
   const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
-  return { code, title, field, summary, visibility, norms, branching: false, steps };
+  return { code, title, field, summary, visibility, norms, timeLimitSeconds, branching: false, steps };
+}
+
+function limitSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.min(180 * 60, Math.round(number));
 }
 
 function normalizeNorms(body) {
@@ -102,6 +110,7 @@ function validateLinearStep(step, stepIndex) {
   return {
     id: text(step?.id, 40) || `step-${stepIndex + 1}`,
     prompt,
+    timeLimitSeconds: limitSeconds(step?.timeLimitSeconds),
     options: rawOptions.map((option, optionIndex) => sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`))
   };
 }
@@ -118,6 +127,7 @@ function validateNode(node, label, level) {
     id: text(node?.id, 40) || `n-${label}`,
     label: text(node?.label, 64) || label,
     prompt,
+    timeLimitSeconds: limitSeconds(node?.timeLimitSeconds),
     options: rawOptions.map((option, optionIndex) => {
       const clean = sanitizeOption(option, optionIndex, `Ситуація ${label}`);
       const letter = BRANCH_LETTERS[optionIndex] || String(optionIndex + 1);
@@ -164,6 +174,7 @@ function flattenTree(node, list = []) {
   list.push({
     id: node.id,
     prompt: node.prompt,
+    timeLimitSeconds: node.timeLimitSeconds || 0,
     options: node.options.map((option) => {
       const { next, ...rest } = option;
       return { ...rest, nextId: next?.id || "" };
@@ -247,6 +258,7 @@ function publicView(item) {
     field: item.field,
     summary: item.summary,
     norms: item.norms || [],
+    timeLimitSeconds: Number(item.timeLimitSeconds) || 0,
     steps: item.steps,
     tree: item.tree || null,
     branching: Boolean(item.branching),
@@ -390,6 +402,7 @@ export function attachCaseRoutes(app, hooks = {}) {
         target.field = input.field;
         target.summary = input.summary;
         target.norms = input.norms;
+        target.timeLimitSeconds = input.timeLimitSeconds || 0;
         target.steps = input.steps;
         target.tree = input.tree || null;
         target.branching = Boolean(input.branching);

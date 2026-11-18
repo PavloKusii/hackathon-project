@@ -47,6 +47,8 @@ export default function Debriefing({ scenario, run, onAgain, onHome, stored, gue
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{scenario.code} · підсумок</p>
       <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Розбір проходження</h1>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{scenario.title}. Нижче ваші відповіді, пояснення і те, де вибір був слабшим за доброчесністю відносно інших варіантів цього кроку.</p>
+      {run.timedOut ? <p className="mt-3 border border-amber-700 bg-amber-950 px-4 py-3 text-sm text-amber-100">Час вийшов. Проходження закрито автоматично. Нижче розбір відповідей, які встигли надійти, разом із поясненнями і слабшими рішеннями.</p> : null}
+      {run.history.length === 0 ? <p className="mt-3 text-sm leading-6 text-zinc-400">Відповідей ще не було, тож шкали лишилися на старті.</p> : null}
       {guest ? <p className="mt-3 border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">Ви пройшли кейс як гість. Ці відповіді ніде не зберігаються.</p> : null}
       {stored ? <p className="mt-3 border border-olive-900 bg-olive-950 px-4 py-3 text-sm text-olive-100">Розбір збережено на вашому обліковому записі.</p> : null}
       <section className="mt-6 border border-zinc-800 bg-zinc-900/80 p-5">

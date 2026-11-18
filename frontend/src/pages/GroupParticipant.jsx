@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import TimerReadout from "../components/TimerReadout";
 import ActionCard from "../components/ActionCard";
 import FeedbackPanel from "../components/FeedbackPanel";
 import MetricsGauges from "../components/MetricsGauges";
@@ -53,6 +54,8 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const [loginPending, setLoginPending] = useState(false);
   const [scores, setScores] = useState(freshScores);
   const [history, setHistory] = useState([]);
+  const [selfDone, setSelfDone] = useState(false);
+  const [localEndsAt, setLocalEndsAt] = useState(0);
   const [bundle, setBundle] = useState(null);
   const appliedRef = useRef(new Set());
   const savedRef = useRef(false);
@@ -164,6 +167,34 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const showChoice = Boolean(activeCode) && !pass && !room && !joining;
 
   const picked = voted && liveStep ? (liveStep.options || []).find((item) => item.id === choice.optionId) : null;
+  const personalLimit = Boolean(branching && liveStep && scenario?.tree && liveStep.id !== scenario.tree.id && liveStep.timeLimitSeconds);
+  const sharedEnds = Number(room?.endsAt) || 0;
+  const visibleEnds = [sharedEnds, localEndsAt].filter((value) => value > 0);
+  const endsAt = visibleEnds.length ? Math.min(...visibleEnds) : 0;
+  const timerScope = endsAt && localEndsAt && (!sharedEnds || localEndsAt <= sharedEnds) ? "step" : (room?.timerScope || "case");
+  const finished = room?.phase === "done" || selfDone;
+
+  useEffect(() => {
+    if (!personalLimit || room?.phase !== "live" || selfDone) {
+      setLocalEndsAt(0);
+      return undefined;
+    }
+    const ends = Date.now() + liveStep.timeLimitSeconds * 1000;
+    setLocalEndsAt(ends);
+    const id = window.setTimeout(() => setSelfDone(true), Math.max(0, ends - Date.now()));
+    return () => window.clearTimeout(id);
+  }, [personalLimit, room?.phase, selfDone, liveStep?.id, liveStep?.timeLimitSeconds]);
+
+  useEffect(() => {
+    if (room?.phase !== "live" || selfDone || !sharedEnds) return undefined;
+    const wait = sharedEnds - Date.now();
+    if (wait <= 0) {
+      setSelfDone(true);
+      return undefined;
+    }
+    const id = window.setTimeout(() => setSelfDone(true), wait);
+    return () => window.clearTimeout(id);
+  }, [room?.phase, selfDone, sharedEnds]);
 
   useEffect(() => {
     if (!voted || !picked || !room) return;
@@ -195,14 +226,14 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   }, [voted, room?.stepIndex, choice.optionId]);
 
   useEffect(() => {
-    if (pass !== "account" || room?.phase !== "done" || !token || !history.length || savedRef.current || !onSave) return;
+    if (pass !== "account" || !finished || !token || !history.length || savedRef.current || !onSave) return;
     savedRef.current = true;
     onSave({
       scenarioId: room.scenarioId,
       mode: "group",
       choices: history.map((entry) => ({ stepId: entry.stepId, optionId: entry.option.id }))
     });
-  }, [pass, room?.phase, room?.scenarioId, token, history, onSave]);
+  }, [pass, finished, room?.phase, room?.scenarioId, token, history, onSave]);
 
   function vote(optionId) {
     if (!room || room.phase !== "live" || voted || !liveStep) return;
@@ -277,13 +308,14 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
               <p className="mt-3 text-base leading-7 text-zinc-200">Викладач ще не відкрив перший крок. Ситуація і варіанти з’являться тут одразу після старту.</p>
             </article>
           ) : null}
-          {room.phase === "done" ? (
+          {finished ? (
             <article className="mt-4 border border-zinc-700 bg-zinc-900 p-6">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Ваш розбір</p>
-              <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Заняття завершено</h2>
+              <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">{room.timedOut || selfDone ? "Час вийшов" : "Заняття завершено"}</h2>
               <p className="mt-3 text-sm leading-6 text-zinc-300">
-                {pass === "account" ? "Особисті відповіді збережено на обліковому записі. Організатор бачить лише загальні відсотки." : "Ви увійшли як гість. Цей розбір лишається на екрані і ніде не зберігається."}
+                {room.timedOut || selfDone ? "Проходження закрито автоматично. Нижче ваші відповіді, пояснення і місця, де вибір був слабшим за доброчесністю." : pass === "account" ? "Особисті відповіді збережено на обліковому записі. Організатор бачить лише загальні відсотки." : "Ви увійшли як гість. Цей розбір лишається на екрані і ніде не зберігається."}
               </p>
+              {history.length === 0 ? <p className="mt-3 text-sm leading-6 text-zinc-400">Відповідей ще не було, тож шкали лишилися на старті.</p> : null}
               <div className="mt-4"><MetricsGauges scores={scores} /></div>
               <div className="mt-4 flex flex-col gap-3">
                 {history.map((entry, index) => (
@@ -299,15 +331,16 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
               </div>
             </article>
           ) : null}
-          {room.phase === "live" && !liveStep ? (
+          {room.phase === "live" && !finished && !liveStep ? (
             <article className="mt-4 border border-olive-700 bg-zinc-900 p-6">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Крок відкрито</p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Ситуація з’являється</h2>
               <p className="mt-3 text-base leading-7 text-zinc-200">Текст дилеми вже на шляху. Залишайтесь на цій сторінці.</p>
             </article>
           ) : null}
-          {liveStep ? (
+          {liveStep && !finished ? (
             <div className="mt-4">
+              {endsAt ? <div className="mb-4 max-w-xs"><TimerReadout endsAt={endsAt} scope={timerScope} /></div> : null}
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                 {scenario.code} · {branching ? `гілка ${liveStep.label || ""}` : `крок ${String(room.stepIndex + 1).padStart(2, "0")} / ${String(room.stepCount || scenario.steps.length).padStart(2, "0")}`}
               </p>

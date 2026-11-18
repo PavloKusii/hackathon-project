@@ -67,7 +67,7 @@ export default function Account({ session, attempts = [], sessions = [], onBack,
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Card kicker="Проходження" title="Моя статистика" text={`${attempts.length} збережених розборів і динаміка шкал.`} onClick={() => onOpen("userStats")} />
           <Card kicker="Розбір" title="Результати" text="Ваші відповіді, слабші рішення і пояснення." onClick={() => onOpen("results")} />
-          <Card kicker="Практика" title="Публічні кейси" text="Самостійне проходження без обмеження часу." onClick={() => onOpen("cases")} />
+          <Card kicker="Практика" title="Публічні кейси" text="Самостійне проходження. Таймер з’являється лише тоді, коли його задав організатор." onClick={() => onOpen("cases")} />
           <Card kicker="Група" title="Код кімнати" text="Вхід за кодом або QR: гість або цей обліковий запис." onClick={() => onOpen("participant")} />
         </div>
       ) : null}

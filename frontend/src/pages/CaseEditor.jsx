@@ -1,12 +1,31 @@
 import { useMemo, useState } from "react";
 import ScenarioGraph from "../components/ScenarioGraph";
 import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, findNode, formTreeFromApi, optionLetter, replaceNode } from "../scenarioTree";
+import { partsFromSeconds, secondsFromParts } from "../timer";
 
 function blankStep() {
-  return { id: "", prompt: "", options: [blankOption("a"), blankOption("b")] };
+  return { id: "", prompt: "", timeMinutes: "", timeSeconds: "", options: [blankOption("a"), blankOption("b")] };
+}
+
+function TimeLimitFields({ minutes, seconds, onChange, title }) {
+  return (
+    <fieldset className="text-sm text-zinc-300">
+      <legend>{title}</legend>
+      <p className="mt-1 text-xs leading-5 text-zinc-500">Порожні поля лишають час необмеженим. Коли відлік доходить до нуля, проходження закривається і відкривається розбір уже даних відповідей.</p>
+      <div className="mt-2 flex gap-2">
+        <label className="flex-1">Хвилини
+          <input inputMode="numeric" value={minutes} onChange={(event) => onChange({ minutes: event.target.value.replace(/[^\d]/g, "").slice(0, 3) })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" placeholder="—" />
+        </label>
+        <label className="flex-1">Секунди
+          <input inputMode="numeric" value={seconds} onChange={(event) => onChange({ seconds: event.target.value.replace(/[^\d]/g, "").slice(0, 4) })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" placeholder="—" />
+        </label>
+      </div>
+    </fieldset>
+  );
 }
 
 function fromCase(item) {
+  const limit = partsFromSeconds(item?.timeLimitSeconds);
   const shared = {
     code: item?.code || "",
     title: item?.title || "",
@@ -14,6 +33,8 @@ function fromCase(item) {
     summary: item?.summary || "",
     visibility: item?.visibility === "public" || item?.status === "published" || item?.status === "pending" ? "public" : "local",
     status: item?.status || "local",
+    timeMinutes: limit.minutes,
+    timeSeconds: limit.seconds,
     normsText: (item?.norms || []).map((norm) => (norm.href ? `${norm.title} | ${norm.href}` : norm.title)).join("\n")
   };
   if (!item) return { ...shared, mode: "tree", tree: buildTree(1, 2), steps: [] };
@@ -25,6 +46,8 @@ function fromCase(item) {
     steps: (item.steps || []).map((step) => ({
       id: step.id || "",
       prompt: step.prompt || "",
+      timeMinutes: partsFromSeconds(step.timeLimitSeconds).minutes,
+      timeSeconds: partsFromSeconds(step.timeLimitSeconds).seconds,
       options: (step.options || []).map((option) => ({
         ...blankOption(option.id),
         title: option.title || "",
@@ -54,6 +77,7 @@ function linearSteps(steps) {
   return steps.map((step) => ({
     id: step.id,
     prompt: step.prompt,
+    timeLimitSeconds: secondsFromParts(step.timeMinutes, step.timeSeconds),
     options: step.options.map((option) => ({
       id: option.id,
       title: option.title,
@@ -81,7 +105,8 @@ function toPayload(form) {
     summary: form.summary,
     visibility: form.visibility,
     status: form.status,
-    norms: normsFromText(form.normsText)
+    norms: normsFromText(form.normsText),
+    timeLimitSeconds: secondsFromParts(form.timeMinutes, form.timeSeconds)
   };
   if (form.mode === "tree") {
     return {
@@ -122,6 +147,8 @@ function OptionFields({ option, onChange }) {
 function draftFromNode(node) {
   return {
     prompt: node.prompt || "",
+    timeMinutes: node.timeMinutes || "",
+    timeSeconds: node.timeSeconds || "",
     options: (node.options || []).map((option) => ({ ...option, next: option.next }))
   };
 }
@@ -130,6 +157,8 @@ function mergeDraft(node, draft) {
   return {
     ...node,
     prompt: draft.prompt,
+    timeMinutes: draft.timeMinutes || "",
+    timeSeconds: draft.timeSeconds || "",
     options: (draft.options || []).map((option) => ({ ...option }))
   };
 }
@@ -308,6 +337,17 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
           <label className="text-sm text-zinc-300 md:col-span-2">Норми, по одному рядку: назва | посилання
             <textarea value={form.normsText} onChange={(event) => patch({ normsText: event.target.value })} className="mt-2 min-h-24 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
+          <div className="md:col-span-2">
+            <TimeLimitFields
+              title="Час на весь кейс"
+              minutes={form.timeMinutes || ""}
+              seconds={form.timeSeconds || ""}
+              onChange={({ minutes, seconds }) => patch({
+                timeMinutes: minutes === undefined ? form.timeMinutes : minutes,
+                timeSeconds: seconds === undefined ? form.timeSeconds : seconds
+              })}
+            />
+          </div>
           <fieldset className="text-sm text-zinc-300">
             <legend>Доступ</legend>
             <label className="mt-2 flex items-center gap-2">
@@ -363,6 +403,18 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                       <label className="block text-sm text-zinc-300">Текст ситуації
                         <textarea value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
                       </label>
+                      <div className="mt-4">
+                        <TimeLimitFields
+                          title="Час на цю ситуацію"
+                          minutes={draft.timeMinutes || ""}
+                          seconds={draft.timeSeconds || ""}
+                          onChange={({ minutes, seconds }) => setDraft({
+                            ...draft,
+                            timeMinutes: minutes === undefined ? draft.timeMinutes : minutes,
+                            timeSeconds: seconds === undefined ? draft.timeSeconds : seconds
+                          })}
+                        />
+                      </div>
                       <div className="mt-5 flex items-center justify-between gap-3">
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіанти відповіді</p>
                         <button type="button" onClick={addOption} className="border border-olive-600 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-olive-100">+ Додати варіант</button>
@@ -427,6 +479,17 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
             <label className="mt-3 block text-sm text-zinc-300">Ситуація
               <textarea required value={step.prompt} onChange={(event) => patchStep(stepIndex, { prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
             </label>
+            <div className="mt-4">
+              <TimeLimitFields
+                title="Час на цей крок"
+                minutes={step.timeMinutes || ""}
+                seconds={step.timeSeconds || ""}
+                onChange={({ minutes, seconds }) => patchStep(stepIndex, {
+                  timeMinutes: minutes === undefined ? step.timeMinutes : minutes,
+                  timeSeconds: seconds === undefined ? step.timeSeconds : seconds
+                })}
+              />
+            </div>
             <div className="mt-4 flex flex-col gap-4">
               {step.options.map((option, optionIndex) => (
                 <div key={`${stepIndex}-${option.id}`} className="border border-zinc-800 p-4">
