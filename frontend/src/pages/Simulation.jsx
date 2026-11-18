@@ -6,11 +6,29 @@ import TimerReadout from "../components/TimerReadout";
 import { findNode } from "../scenarioTree";
 import { clampScore } from "../scores";
 
+function scenarioPathDepth(scenario) {
+  const steps = scenario?.steps || [];
+  const hasLinks = steps.some((step) => (step.options || []).some((option) => option.nextStepId));
+  if (!hasLinks) return steps.length;
+
+  const byId = new Map(steps.map((step) => [step.id, step]));
+  function depth(stepId, path = new Set()) {
+    const step = byId.get(stepId);
+    if (!step || path.has(stepId)) return 0;
+    const nextPath = new Set(path);
+    nextPath.add(stepId);
+    const children = (step.options || []).map((option) => depth(option.nextStepId, nextPath));
+    return 1 + Math.max(0, ...children);
+  }
+  return depth(steps[0]?.id);
+}
+
 export default function Simulation({ scenario, run, setRun, onExit, onDebrief }) {
   const step = scenario.tree ? findNode(scenario.tree, run.nodeId) || scenario.tree : scenario.steps[run.stepIndex];
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
   const last = scenario.tree ? !picked?.next : run.stepIndex >= scenario.steps.length - 1;
-  const depth = scenario.tree ? (scenario.depth || "гілки") : scenario.steps.length;
+  const depth = scenario.tree ? (scenario.depth || "гілки") : scenarioPathDepth(scenario);
+  const linearStepNumber = Math.max(1, run.history.length + (run.revealed ? 0 : 1));
   const timeMode = scenario.timeMode === "case" || scenario.timeMode === "step"
     ? scenario.timeMode
     : (Number(scenario.timeLimitSeconds) > 0 ? "case" : "none");
@@ -124,7 +142,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={onExit} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-          {scenario.code} · {scenario.tree ? `гілка ${step?.label || run.history.length + 1}` : `крок ${String(run.stepIndex + 1).padStart(2, "0")} / ${String(depth).padStart(2, "0")}`}
+          {scenario.code} · {scenario.tree ? `гілка ${step?.label || run.history.length + 1}` : `крок ${String(linearStepNumber).padStart(2, "0")} / ${String(depth).padStart(2, "0")}`}
         </p>
       </div>
       {endsAt ? <div className="mt-4"><TimerReadout endsAt={endsAt} scope={timeMode} /></div> : null}
@@ -166,3 +184,4 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
     </section>
   );
 }
+
