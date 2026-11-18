@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import MetricsGauges from "../components/MetricsGauges";
 import ActionCard from "../components/ActionCard";
 import FeedbackPanel from "../components/FeedbackPanel";
+import { findNode } from "../scenarioTree";
 import { clampScore } from "../scores";
 
 export default function Simulation({ scenario, run, setRun, onExit, onDebrief }) {
-  const step = scenario.steps[run.stepIndex];
+  const step = scenario.tree ? findNode(scenario.tree, run.nodeId) || scenario.tree : scenario.steps[run.stepIndex];
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
-  const last = run.stepIndex >= scenario.steps.length - 1;
+  const last = scenario.tree ? !picked?.next : run.stepIndex >= scenario.steps.length - 1;
+  const depth = scenario.tree ? (scenario.depth || "гілки") : scenario.steps.length;
 
   useEffect(() => {
     if (!run.revealed) return;
@@ -40,6 +42,15 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
 
   function next() {
     if (!run.revealed) return;
+    if (scenario.tree) {
+      if (!picked?.next) {
+        onDebrief();
+        return;
+      }
+      setRun({ ...run, nodeId: picked.next.id, revealed: false, lockedId: "" });
+      window.scrollTo(0, 0);
+      return;
+    }
     if (last) {
       onDebrief();
       return;
@@ -55,7 +66,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={onExit} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-          {scenario.code} · крок {String(run.stepIndex + 1).padStart(2, "0")} / {String(scenario.steps.length).padStart(2, "0")}
+          {scenario.code} · {scenario.tree ? `гілка ${step?.label || run.history.length + 1}` : `крок ${String(run.stepIndex + 1).padStart(2, "0")} / ${String(depth).padStart(2, "0")}`}
         </p>
       </div>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">

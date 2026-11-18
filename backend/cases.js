@@ -64,56 +64,120 @@ export function validateCase(body) {
   const visibility = body?.visibility === "public" ? "public" : "local";
   if (title.length < 3) throw fail(400, "Назва кейса має містити щонайменше 3 символи.");
   if (field.length < 2) throw fail(400, "Вкажіть галузь або тему кейса.");
+  const norms = normalizeNorms(body);
+  if (body?.tree) {
+    const tree = validateNode(body.tree, "1", 1);
+    return {
+      code,
+      title,
+      field,
+      summary,
+      visibility,
+      norms,
+      branching: true,
+      depth: Number(body.depth) || treeDepth(tree),
+      optionCount: Number(body.optionCount) || (tree.options || []).length,
+      tree,
+      steps: flattenTree(tree)
+    };
+  }
   const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
-  const steps = rawSteps.map((step, stepIndex) => {
-    const prompt = text(step?.prompt, 2000);
-    if (prompt.length < 10) throw fail(400, `Крок ${stepIndex + 1}: опишіть ситуацію докладніше.`);
-    const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 4) : [];
-    if (rawOptions.length < 2) throw fail(400, `Крок ${stepIndex + 1}: потрібно щонайменше два варіанти.`);
-    const options = rawOptions.map((option, optionIndex) => {
-      const optionTitle = text(option?.title, 160);
-      if (optionTitle.length < 2) throw fail(400, `Крок ${stepIndex + 1}: заповніть назву варіанта ${optionIndex + 1}.`);
-      const deltas = {};
-      METRICS.forEach((key) => {
-        const number = Number(option?.deltas?.[key] ?? option?.[key] ?? 0);
-        if (!Number.isFinite(number) || number < -40 || number > 40) {
-          throw fail(400, "Зміна шкали має бути числом від -40 до 40.");
-        }
-        deltas[key] = Math.round(number);
-      });
-      const badges = String(option?.badges || "")
-        .split(",")
-        .map((item) => text(item, 40))
-        .filter(Boolean)
-        .slice(0, 4);
-      const legalRefs = [];
-      const legalTitle = text(option?.legalTitle || option?.legalRefs?.[0]?.title, 160);
-      const legalHref = text(option?.legalHref || option?.legalRefs?.[0]?.href, 300);
-      if (legalTitle) legalRefs.push({ title: legalTitle, href: legalHref });
-      return {
-        id: text(option?.id, 8) || String.fromCharCode(97 + optionIndex),
-        title: optionTitle,
-        text: text(option?.text, 800),
-        badges,
-        deltas,
-        analysis: text(option?.analysis, 2000),
-        deferred: text(option?.deferred, 2000),
-        legal: text(option?.legal, 2000),
-        legalRefs
-      };
-    });
-    return {
-      id: text(step?.id, 40) || `step-${stepIndex + 1}`,
-      prompt,
-      options
-    };
-  });
-  const norms = (Array.isArray(body?.norms) ? body.norms : [])
+  const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
+  return { code, title, field, summary, visibility, norms, branching: false, steps };
+}
+
+function normalizeNorms(body) {
+  return (Array.isArray(body?.norms) ? body.norms : [])
     .map((norm) => ({ title: text(norm?.title, 180), href: text(norm?.href, 300) }))
     .filter((norm) => norm.title)
     .slice(0, 6);
-  return { code, title, field, summary, visibility, norms, steps };
+}
+
+function validateLinearStep(step, stepIndex) {
+  const prompt = text(step?.prompt, 2000);
+  if (prompt.length < 10) throw fail(400, `Крок ${stepIndex + 1}: опишіть ситуацію докладніше.`);
+  const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 4) : [];
+  if (rawOptions.length < 2) throw fail(400, `Крок ${stepIndex + 1}: потрібно щонайменше два варіанти.`);
+  return {
+    id: text(step?.id, 40) || `step-${stepIndex + 1}`,
+    prompt,
+    options: rawOptions.map((option, optionIndex) => sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`))
+  };
+}
+
+const BRANCH_LETTERS = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ".split("");
+
+function validateNode(node, label, level) {
+  if (level > 20) throw fail(400, "Гілка сценарію глибша за 20 етапів.");
+  const prompt = text(node?.prompt, 2000);
+  if (prompt.length < 10) throw fail(400, `Ситуація ${label}: опишіть її докладніше.`);
+  const rawOptions = Array.isArray(node?.options) ? node.options.slice(0, 12) : [];
+  if (rawOptions.length < 2) throw fail(400, `Ситуація ${label}: потрібно щонайменше два варіанти.`);
+  return {
+    id: text(node?.id, 40) || `n-${label}`,
+    label: text(node?.label, 64) || label,
+    prompt,
+    options: rawOptions.map((option, optionIndex) => {
+      const clean = sanitizeOption(option, optionIndex, `Ситуація ${label}`);
+      const letter = BRANCH_LETTERS[optionIndex] || String(optionIndex + 1);
+      const next = option?.next ? validateNode(option.next, `${label}${letter}`, level + 1) : null;
+      return { ...clean, next };
+    })
+  };
+}
+
+function sanitizeOption(option, optionIndex, where) {
+  const optionTitle = text(option?.title, 160);
+  if (optionTitle.length < 2) throw fail(400, `${where}: заповніть назву варіанта ${optionIndex + 1}.`);
+  const deltas = {};
+  METRICS.forEach((key) => {
+    const number = Number(option?.deltas?.[key] ?? option?.[key] ?? 0);
+    if (!Number.isFinite(number) || number < -40 || number > 40) {
+      throw fail(400, "Зміна шкали має бути числом від -40 до 40.");
+    }
+    deltas[key] = Math.round(number);
+  });
+  const badges = String(option?.badges || "")
+    .split(",")
+    .map((item) => text(item, 40))
+    .filter(Boolean)
+    .slice(0, 4);
+  const legalRefs = [];
+  const legalTitle = text(option?.legalTitle || option?.legalRefs?.[0]?.title, 160);
+  const legalHref = text(option?.legalHref || option?.legalRefs?.[0]?.href, 300);
+  if (legalTitle) legalRefs.push({ title: legalTitle, href: legalHref });
+  return {
+    id: text(option?.id, 32) || String.fromCharCode(97 + optionIndex),
+    title: optionTitle,
+    text: text(option?.text, 800),
+    badges,
+    deltas,
+    analysis: text(option?.analysis, 2000),
+    deferred: text(option?.deferred, 2000),
+    legal: text(option?.legal, 2000),
+    legalRefs
+  };
+}
+
+function flattenTree(node, list = []) {
+  list.push({
+    id: node.id,
+    prompt: node.prompt,
+    options: node.options.map((option) => {
+      const { next, ...rest } = option;
+      return { ...rest, nextId: next?.id || "" };
+    })
+  });
+  node.options.forEach((option) => {
+    if (option.next) flattenTree(option.next, list);
+  });
+  return list;
+}
+
+function treeDepth(node) {
+  const below = (node.options || []).map((option) => (option.next ? treeDepth(option.next) : 0));
+  return 1 + (below.length ? Math.max(...below) : 0);
 }
 
 async function readBuiltin() {
@@ -184,6 +248,8 @@ function publicView(item) {
     summary: item.summary,
     norms: item.norms || [],
     steps: item.steps,
+    tree: item.tree || null,
+    branching: Boolean(item.branching),
     source: item.source === "builtin" ? "builtin" : "community",
     status: "published"
   };
@@ -325,6 +391,10 @@ export function attachCaseRoutes(app, hooks = {}) {
         target.summary = input.summary;
         target.norms = input.norms;
         target.steps = input.steps;
+        target.tree = input.tree || null;
+        target.branching = Boolean(input.branching);
+        target.depth = input.depth || 0;
+        target.optionCount = input.optionCount || 0;
         target.visibility = input.visibility;
         if (user.role === "superadmin") {
           target.status = input.visibility === "local"
@@ -466,7 +536,7 @@ export async function appendSession(record) {
 function scoreChoices(scenario, choices) {
   const scores = { integrity: BASE_SCORE, trust: BASE_SCORE, effectiveness: BASE_SCORE };
   const history = [];
-  const list = Array.isArray(choices) ? choices.slice(0, 12) : [];
+  const list = Array.isArray(choices) ? choices.slice(0, 40) : [];
   list.forEach((choice) => {
     const step = (scenario.steps || []).find((item) => item.id === choice?.stepId);
     const option = step?.options?.find((item) => item.id === choice?.optionId);

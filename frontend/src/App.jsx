@@ -218,6 +218,7 @@ export default function App() {
     setStored(false);
     setRun({
       stepIndex: 0,
+      nodeId: scenario.tree?.id || "",
       scores: freshScores(),
       history: [],
       lockedId: "",

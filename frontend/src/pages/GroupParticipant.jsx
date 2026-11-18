@@ -4,6 +4,7 @@ import FeedbackPanel from "../components/FeedbackPanel";
 import MetricsGauges from "../components/MetricsGauges";
 import { onConnect, onConnectError, send, subscribe } from "../services/socketService";
 import { clampScore, freshScores } from "../scores";
+import { findNode } from "../scenarioTree";
 
 function randomGuestId() {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -41,7 +42,8 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const [draft, setDraft] = useState(entry);
   const [activeCode, setActiveCode] = useState(entry);
   const [room, setRoom] = useState(null);
-  const [choice, setChoice] = useState({ stepIndex: -1, optionId: "" });
+  const [choice, setChoice] = useState({ stepIndex: -1, nodeId: "", optionId: "" });
+  const [branchId, setBranchId] = useState("");
   const [note, setNote] = useState("");
   const [joining, setJoining] = useState(false);
   const [pass, setPass] = useState("");
@@ -72,9 +74,13 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
     });
     const offVote = subscribe("your_vote", (payload) => {
       if (!payload) return;
-      setChoice({
-        stepIndex: Number(payload.stepIndex),
-        optionId: payload.optionId || ""
+      setChoice((current) => {
+        if (current.nodeId) return current;
+        return {
+          stepIndex: Number(payload.stepIndex),
+          nodeId: "",
+          optionId: payload.optionId || ""
+        };
       });
     });
     const joinCurrent = () => {
@@ -147,8 +153,13 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   }
 
   const scenario = scenarios.find((item) => item.id === room?.scenarioId) || (bundle?.id === room?.scenarioId ? bundle : null);
-  const liveStep = scenario && room && room.phase === "live" ? scenario.steps?.[room.stepIndex] : null;
-  const voted = Boolean(room && choice.stepIndex === room.stepIndex && choice.optionId);
+  const branching = Boolean(scenario?.tree);
+  const liveStep = scenario && room && room.phase === "live"
+    ? (branching ? findNode(scenario.tree, branchId || scenario.tree.id) : scenario.steps?.[room.stepIndex])
+    : null;
+  const voted = branching
+    ? Boolean(liveStep && choice.nodeId === liveStep.id && choice.optionId)
+    : Boolean(room && choice.stepIndex === room.stepIndex && choice.optionId);
   const showCode = !activeCode && !room && !joining;
   const showChoice = Boolean(activeCode) && !pass && !room && !joining;
 
@@ -156,7 +167,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
 
   useEffect(() => {
     if (!voted || !picked || !room) return;
-    const key = `${room.code}:${room.stepIndex}:${choice.optionId}`;
+    const key = `${room.code}:${liveStep?.id || room.stepIndex}:${choice.optionId}`;
     if (appliedRef.current.has(key)) return;
     appliedRef.current.add(key);
     setScores((prev) => {
@@ -194,9 +205,17 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   }, [pass, room?.phase, room?.scenarioId, token, history, onSave]);
 
   function vote(optionId) {
-    if (!room || room.phase !== "live" || voted) return;
-    setChoice({ stepIndex: room.stepIndex, optionId });
-    send("submit_vote", { code: room.code, guestId: guestIdFor(room.code), optionId });
+    if (!room || room.phase !== "live" || voted || !liveStep) return;
+    setChoice({ stepIndex: room.stepIndex, nodeId: liveStep.id, optionId });
+    if (!branching || liveStep.id === scenario.tree.id) {
+      send("submit_vote", { code: room.code, guestId: guestIdFor(room.code), optionId });
+    }
+  }
+
+  function continueBranch() {
+    if (!picked?.next) return;
+    setBranchId(picked.next.id);
+    setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
   }
 
   return (
@@ -290,7 +309,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
           {liveStep ? (
             <div className="mt-4">
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                {scenario.code} · крок {String(room.stepIndex + 1).padStart(2, "0")} / {String(room.stepCount || scenario.steps.length).padStart(2, "0")}
+                {scenario.code} · {branching ? `гілка ${liveStep.label || ""}` : `крок ${String(room.stepIndex + 1).padStart(2, "0")} / ${String(room.stepCount || scenario.steps.length).padStart(2, "0")}`}
               </p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">{scenario.title}</h2>
               <article className="mt-4 border border-zinc-700 bg-zinc-950 p-5">
@@ -315,7 +334,8 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
                   <div className="mt-4">
                     <MetricsGauges scores={scores} />
                   </div>
-                  <FeedbackPanel option={picked} />
+                  <FeedbackPanel option={picked} last={!picked.next} onNext={picked.next ? continueBranch : undefined} />
+                  {!picked.next ? <p className="mt-3 text-sm leading-6 text-zinc-400">Вашу гілку пройдено. Загальний підсумок відкриється, коли організатор завершить заняття.</p> : null}
                 </div>
               ) : null}
             </div>

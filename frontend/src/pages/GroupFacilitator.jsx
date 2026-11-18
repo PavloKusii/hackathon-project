@@ -216,6 +216,7 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
                 {room.phase === "lobby" ? "Очікування" : room.phase === "done" ? "Заняття завершено" : `Крок ${String(room.stepIndex + 1).padStart(2, "0")} / ${String(room.stepCount).padStart(2, "0")}`}
               </p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">{activeScenario?.title}</h2>
+              {activeScenario?.tree && room.phase === "live" ? <p className="mt-3 text-sm leading-7 text-olive-200">Це розгалужений кейс. Кожен слухач іде власною гілкою після першої ситуації. На екрані викладача лишається лише зведення першого питання, без імен.</p> : null}
               {step ? <p className="mt-3 text-sm leading-7 text-zinc-300">{step.prompt}</p> : <p className="mt-3 text-sm leading-7 text-zinc-400">Відкрийте крок, коли аудиторія в кімнаті. До цього слухачі бачать екран очікування.</p>}
             </article>
             <div className="flex flex-col gap-3">

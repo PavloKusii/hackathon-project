@@ -26,7 +26,7 @@ export default function Moderation({ cases, onBack, onEdit, onDecide, note }) {
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-400">{item.code} · {STATUS[item.status] || item.status}</p>
                 <h2 className="mt-2 font-display text-3xl text-zinc-50">{item.title}</h2>
                 <p className="mt-2 text-sm text-zinc-400">{item.summary}</p>
-                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">{item.ownerEmail || "вбудований сценарій"} · кроків {item.steps?.length || 0}</p>
+                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">{item.ownerEmail || "вбудований сценарій"} · {item.tree ? `дерево, ${item.steps?.length || 0} ситуацій` : `кроків ${item.steps?.length || 0}`}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => onEdit(item)} className="border border-zinc-600 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-200">Редагувати</button>

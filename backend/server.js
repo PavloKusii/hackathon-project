@@ -99,15 +99,18 @@ function snapshotStep(room) {
   });
 }
 
+function sharedSteps(scenario) {
+  if (scenario?.tree) return 1;
+  return scenario?.steps?.length || 0;
+}
+
 function playerState(room) {
   const scenario = scenarioById(room.scenarioId);
-  const steps = scenario?.steps || [];
-  const visible = room.phase === "live" || room.phase === "done";
   return {
     code: room.code,
     scenarioId: room.scenarioId,
     stepIndex: room.stepIndex,
-    stepCount: steps.length,
+    stepCount: sharedSteps(scenario),
     phase: room.phase,
     participantCount: onlineCount(room),
     groupLabel: room.groupLabel || "",
@@ -297,7 +300,7 @@ io.on("connection", (socket) => {
     }
     await refreshScenarios();
     const scenario = scenarioById(room.scenarioId);
-    const total = scenario?.steps?.length || 0;
+    const total = sharedSteps(scenario);
     if (!total) {
       socket.emit("room_error", { message: "У сценарії немає кроків." });
       return;
