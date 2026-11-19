@@ -1,6 +1,7 @@
 ﻿import { ROLE_LABELS } from "../services/authService";
 
 const NAVIGATION = [
+  { screen: "publicCases", label: "Публічні кейси", active: (screen) => screen === "publicCases" },
   { screen: "library", label: "Норми", active: (screen) => screen === "library" },
   { screen: "participant", label: "Підрозділ", active: (screen) => screen === "participant" }
 ];

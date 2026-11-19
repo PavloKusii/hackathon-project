@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from "react";
 
-export default function CaseSelector({ scenarios, localCases = [], loading, loadError, onReload, onStart, onEdit, onBack }) {
+export default function CaseSelector({ scenarios, localCases = [], loading, loadError, onReload, onStart, onEdit, onBack, title = "Кейси" }) {
   const [selectedField, setSelectedField] = useState("all");
   const fields = useMemo(() => [...new Set(scenarios.map((item) => item.field).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk")), [scenarios]);
   const visibleScenarios = selectedField === "all" ? scenarios : scenarios.filter((item) => item.field === selectedField);
@@ -10,7 +10,7 @@ export default function CaseSelector({ scenarios, localCases = [], loading, load
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Інтерактив</p>
-          <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Публічні Кейси</h1>
+          <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">{title}</h1>
         </div>
         <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
       </div>
@@ -52,7 +52,6 @@ export default function CaseSelector({ scenarios, localCases = [], loading, load
                 <span className="border border-olive-700 bg-olive-950 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Кейс</span>
                 <p className="text-right font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.field}</p>
               </div>
-              <p className="mt-4 font-mono text-xs text-olive-400">{item.code}</p>
               <h2 className="mt-2 font-display text-3xl leading-tight tracking-wide text-zinc-50">{item.title}</h2>
               <p className="mt-3 flex-1 pb-2 text-sm leading-6 text-zinc-400">{item.summary}</p>
               <p className="mt-3 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Кроків: {item.steps?.length || 0}</p>

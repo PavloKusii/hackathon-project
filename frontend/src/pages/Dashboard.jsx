@@ -128,7 +128,6 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
           {scenarios.length === 0 ? <p className="text-sm text-zinc-400">Публічні кейси з’являться тут, щойно сервер віддасть список.</p> : null}
           {scenarios.slice(0, 3).map((item) => (
             <article key={item.id} className="flex flex-col border border-olive-900 border-l-4 border-l-olive-500 bg-zinc-900/80 p-5">
-              <p className="font-mono text-xs text-olive-400">{item.code}</p>
               <h3 className="mt-2 font-display text-3xl leading-none text-zinc-50">{item.title}</h3>
               <p className="mt-3 flex-1 text-sm leading-6 text-zinc-400">{item.summary}</p>
               <button type="button" onClick={() => onStart(item.id)} className="mt-4 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100">{limitCaption(item) ? `Почати · ${limitCaption(item)}` : "Почати"}</button>

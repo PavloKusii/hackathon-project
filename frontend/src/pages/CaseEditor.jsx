@@ -17,7 +17,6 @@ function fromCase(item) {
     : (Number(item?.timeLimitSeconds) > 0 ? "case" : "none");
   const limit = partsFromSeconds(inherited === "none" ? 0 : item?.timeLimitSeconds);
   const shared = {
-    code: item?.code || "",
     title: item?.title || "",
     field: item?.field || "",
     summary: item?.summary || "",
@@ -87,7 +86,6 @@ function linearSteps(steps) {
 
 function toPayload(form) {
   const shared = {
-    code: form.code,
     title: form.title,
     field: form.field,
     summary: form.summary,
@@ -340,9 +338,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={saveCase}>
         <div className="grid gap-4 border border-zinc-800 bg-zinc-900/80 p-5 md:grid-cols-2">
-          <label className="text-sm text-zinc-300">Код
-            <input value={form.code} onChange={(event) => patch({ code: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" placeholder="EG-12" />
-          </label>
           <label className="text-sm text-zinc-300">Тема
             <input required value={form.field} onChange={(event) => patch({ field: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
