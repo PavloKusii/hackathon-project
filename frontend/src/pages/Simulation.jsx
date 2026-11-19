@@ -26,7 +26,9 @@ function scenarioPathDepth(scenario) {
 export default function Simulation({ scenario, run, setRun, onExit, onDebrief }) {
   const step = scenario.tree ? findNode(scenario.tree, run.nodeId) || scenario.tree : scenario.steps[run.stepIndex];
   const picked = step?.options?.find((item) => item.id === run.lockedId) || null;
-  const last = scenario.tree ? !picked?.next : run.stepIndex >= scenario.steps.length - 1;
+  const last = scenario.tree
+    ? !picked?.next
+    : Boolean(picked?.end) || (!picked?.nextStepId && run.stepIndex >= scenario.steps.length - 1);
   const depth = scenario.tree ? (scenario.depth || "гілки") : scenarioPathDepth(scenario);
   const linearStepNumber = Math.max(1, run.history.length + (run.revealed ? 0 : 1));
   const timeMode = scenario.timeMode === "case" || scenario.timeMode === "step"
@@ -74,6 +76,19 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
       setRun({ ...current, timedOut: true });
       onDebrief();
       return;
+    }
+    if (chosen?.end) {
+      setRun({ ...current, timedOut: true });
+      onDebrief();
+      return;
+    }
+    if (chosen?.nextStepId) {
+      const nextStepIndex = scenario.steps.findIndex((item) => item.id === chosen.nextStepId);
+      if (nextStepIndex >= 0) {
+        setRun({ ...current, stepIndex: nextStepIndex, revealed: false, lockedId: "" });
+        window.scrollTo(0, 0);
+        return;
+      }
     }
     if (current.stepIndex >= scenario.steps.length - 1) {
       setRun({ ...current, timedOut: true });
@@ -135,6 +150,12 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
         window.scrollTo(0, 0);
         return;
       }
+    }
+
+    // Explicitly ended branches must not fall through to the next linear step.
+    if (picked?.end) {
+      onDebrief();
+      return;
     }
 
     // Якщо nextStepId відсутній (фінал / 3-тє питання) — одразу завершуємо симуляцію

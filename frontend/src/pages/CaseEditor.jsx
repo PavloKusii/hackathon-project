@@ -1,17 +1,82 @@
 import { useMemo, useState } from "react";
 import ScenarioGraph from "../components/ScenarioGraph";
-import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, findNode, formTreeFromApi, optionLetter, removeNode, replaceNode } from "../scenarioTree";
+import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, createOption, findNode, formTreeFromApi, optionLetter, removeNode, replaceNode } from "../scenarioTree";
 import { partsFromSeconds, secondsFromParts } from "../timer";
 
 function blankStep() {
   return { id: "", prompt: "", options: [blankOption("a"), blankOption("b")] };
 }
 
+function formOption(option, index = 0) {
+  const source = option && typeof option === "object" ? option : {};
+  const badges = Array.isArray(source.badges)
+    ? source.badges
+    : String(source.badges || "").split(",");
+  const legalRef = Array.isArray(source.legalRefs) ? source.legalRefs[0] : null;
+  const deltas = source.deltas && typeof source.deltas === "object" ? source.deltas : {};
+  return {
+    ...blankOption(String(source.id || `option-${index + 1}`)),
+    title: typeof source.title === "string" ? source.title : "",
+    text: typeof source.text === "string" ? source.text : "",
+    badges: badges.filter((badge) => typeof badge === "string").join(", "),
+    analysis: typeof source.analysis === "string" ? source.analysis : "",
+    deferred: typeof source.deferred === "string" ? source.deferred : "",
+    legal: typeof source.legal === "string" ? source.legal : "",
+    legalTitle: typeof legalRef?.title === "string" ? legalRef.title : (typeof source.legalTitle === "string" ? source.legalTitle : ""),
+    legalHref: typeof legalRef?.href === "string" ? legalRef.href : (typeof source.legalHref === "string" ? source.legalHref : ""),
+    integrity: safeDelta(deltas.integrity ?? source.integrity),
+    trust: safeDelta(deltas.trust ?? source.trust),
+    effectiveness: safeDelta(deltas.effectiveness ?? source.effectiveness),
+    nextStepId: typeof source.nextStepId === "string" ? source.nextStepId : "",
+    end: source.end === true
+  };
+}
+
+function safeDelta(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(-40, Math.min(0, number)) : 0;
+}
+
+function graphFromSteps(steps) {
+  const sourceSteps = Array.isArray(steps) ? steps : [];
+  const usedIds = new Set();
+  const nodes = sourceSteps.map((step, index) => {
+    const source = step && typeof step === "object" ? step : {};
+    const baseId = typeof source.id === "string" && source.id.trim() ? source.id.trim() : `step-${index + 1}`;
+    let id = baseId;
+    let suffix = 2;
+    while (usedIds.has(id)) id = `${baseId}-${suffix++}`;
+    usedIds.add(id);
+    return {
+      id,
+      sourceId: baseId,
+      label: String(index + 1),
+      prompt: typeof source.prompt === "string" ? source.prompt : "",
+      options: (Array.isArray(source.options) ? source.options : []).map(formOption)
+    };
+  });
+  const byId = new Map();
+  nodes.forEach((node) => {
+    if (!byId.has(node.sourceId)) byId.set(node.sourceId, node);
+    byId.set(node.id, node);
+  });
+  nodes.forEach((node, index) => {
+    node.options.forEach((option) => {
+      const implicitNext = nodes[index + 1]?.id;
+      option.next = option.end ? null : byId.get(option.nextStepId || implicitNext) || null;
+      delete option.nextStepId;
+      delete option.end;
+    });
+    delete node.sourceId;
+  });
+  return nodes[0] || createNode("1");
+}
+
 function digits(value, max) {
   return String(value || "").replace(/[^\d]/g, "").slice(0, max);
 }
 
-function fromCase(item) {
+function fromCase(item, visualGraph = false) {
   const inherited = item?.timeMode === "case" || item?.timeMode === "step"
     ? item.timeMode
     : (Number(item?.timeLimitSeconds) > 0 ? "case" : "none");
@@ -25,32 +90,29 @@ function fromCase(item) {
     timeMode: inherited,
     timeMinutes: limit.minutes,
     timeSeconds: inherited === "step" ? limit.seconds : "",
-    normsText: (item?.norms || []).map((norm) => (norm.href ? `${norm.title} | ${norm.href}` : norm.title)).join("\n")
+    normsText: (Array.isArray(item?.norms) ? item.norms : [])
+      .filter((norm) => norm && typeof norm === "object")
+      .map((norm) => {
+        const title = typeof norm.title === "string" ? norm.title : "";
+        const href = typeof norm.href === "string" ? norm.href : "";
+        return href ? `${title} | ${href}` : title;
+      }).join("\n")
   };
   if (!item) return { ...shared, mode: "tree", tree: buildTree(1, 2), steps: [] };
-  if (item.tree) return { ...shared, mode: "tree", tree: formTreeFromApi(item.tree), steps: [] };
+  if (item.tree) return { ...shared, mode: "tree", tree: formTreeFromApi(item.tree) || createNode("1"), steps: [] };
+  const steps = (Array.isArray(item.steps) ? item.steps : []).map((step) => ({
+    id: typeof step?.id === "string" ? step.id : "",
+    prompt: typeof step?.prompt === "string" ? step.prompt : "",
+    options: (Array.isArray(step?.options) ? step.options : []).map(formOption)
+  }));
+  if (visualGraph) {
+    return { ...shared, mode: "graph", tree: graphFromSteps(steps), steps: [] };
+  }
   return {
     ...shared,
     mode: "linear",
     tree: null,
-    steps: (item.steps || []).map((step) => ({
-      id: step.id || "",
-      prompt: step.prompt || "",
-      options: (step.options || []).map((option) => ({
-        ...blankOption(option.id),
-        title: option.title || "",
-        text: option.text || "",
-        badges: (option.badges || []).join(", "),
-        analysis: option.analysis || "",
-        deferred: option.deferred || "",
-        legal: option.legal || "",
-        legalTitle: option.legalRefs?.[0]?.title || "",
-        legalHref: option.legalRefs?.[0]?.href || "",
-        integrity: option.deltas?.integrity || 0,
-        trust: option.deltas?.trust || 0,
-        effectiveness: option.deltas?.effectiveness || 0
-      }))
-    }))
+    steps
   };
 }
 
@@ -75,13 +137,36 @@ function linearSteps(steps) {
       legal: option.legal,
       legalTitle: option.legalTitle,
       legalHref: option.legalHref,
+      nextStepId: option.nextStepId || "",
+      end: option.end === true,
       deltas: {
-        integrity: Number(option.integrity) || 0,
-        trust: Number(option.trust) || 0,
-        effectiveness: Number(option.effectiveness) || 0
+        integrity: Math.min(0, Number(option.integrity) || 0),
+        trust: Math.min(0, Number(option.trust) || 0),
+        effectiveness: Math.min(0, Number(option.effectiveness) || 0)
       }
     }))
   }));
+}
+
+function graphSteps(root) {
+  const nodes = [];
+  const seen = new Set();
+  function visit(node) {
+    if (!node || seen.has(node.id)) return;
+    seen.add(node.id);
+    nodes.push(node);
+    (node.options || []).forEach((option) => visit(option.next));
+  }
+  visit(root);
+  return linearSteps(nodes.map((node) => ({
+    id: node.id,
+    prompt: node.prompt,
+    options: (node.options || []).map((option) => ({
+      ...option,
+      nextStepId: option.next?.id || "",
+      end: !option.next
+    }))
+  })));
 }
 
 function toPayload(form) {
@@ -100,6 +185,9 @@ function toPayload(form) {
       ...shared,
       tree: apiTreeFromForm(form.tree)
     };
+  }
+  if (form.mode === "graph") {
+    return { ...shared, steps: graphSteps(form.tree) };
   }
   return { ...shared, steps: linearSteps(form.steps) };
 }
@@ -124,14 +212,13 @@ function OptionFields({ option, onChange }) {
       </label>
       {["integrity", "trust", "effectiveness"].map((key) => {
         const label = key === "integrity" ? "Доброчесність" : key === "trust" ? "Довіра" : "Ефективність";
-        const value = Number(option[key]) || 0;
+        const value = Math.max(-40, Math.min(0, Number(option[key]) || 0));
         return (
           <fieldset key={key} className="border border-zinc-800 p-3 text-sm text-zinc-300">
             <legend>{label}</legend>
             <div className="mt-2 flex items-center gap-2">
-              <button type="button" onClick={() => onChange({ [key]: Math.max(-40, value - 1) })} className="h-10 w-10 border border-zinc-700 text-xl text-zinc-200">−</button>
-              <input type="number" min="-40" max="40" value={value} onChange={(event) => onChange({ [key]: Math.max(-40, Math.min(40, Number(event.target.value) || 0)) })} className="h-10 w-20 border border-zinc-700 bg-zinc-950 text-center text-zinc-100" />
-              <button type="button" onClick={() => onChange({ [key]: Math.min(40, value + 1) })} className="h-10 w-10 border border-olive-700 text-xl text-olive-200">+</button>
+              <button type="button" aria-label={`Зменшити ${label}`} onClick={() => onChange({ [key]: Math.max(-40, value - 1) })} className="h-10 w-10 border border-zinc-700 text-xl text-zinc-200">−</button>
+              <input type="number" min="-40" max="0" value={value} onChange={(event) => onChange({ [key]: Math.max(-40, Math.min(0, Number(event.target.value) || 0)) })} className="h-10 w-20 border border-zinc-700 bg-zinc-950 text-center text-zinc-100" />
             </div>
           </fieldset>
         );
@@ -168,7 +255,7 @@ function firstGap(node) {
 }
 
 export default function CaseEditor({ initial, role, pending, error, onSave, onCancel }) {
-  const [form, setForm] = useState(() => fromCase(initial));
+  const [form, setForm] = useState(() => fromCase(initial, role === "superadmin" && !initial?.tree));
   const [selectedId, setSelectedId] = useState("");
   const [optionFocus, setOptionFocus] = useState("");
   const [draft, setDraft] = useState(null);
@@ -178,7 +265,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
   const liveTree = form.tree && draft && selected ? replaceNode(form.tree, selected.id, mergeDraft(selected, draft)) : form.tree;
   const payload = useMemo(() => toPayload({ ...form, tree: liveTree }), [form, liveTree]);
   const builtin = initial?.source === "builtin";
-  const branching = form.mode === "tree";
+  const branching = form.mode === "tree" || form.mode === "graph";
 
   function patch(partial) {
     setForm((current) => ({ ...current, ...partial }));
@@ -239,10 +326,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
 
   function addOption() {
     if (!draft || !selected) return;
-    if (draft.options.length >= 12) {
-      setGraphNote("На одному питанні можна додати до 12 варіантів.");
-      return;
-    }
     changeDraft(
       { ...draft, options: [...draft.options, createLinkedOption(selected.label, draft.options.length)] },
       "Варіант додано. Нова гілка вже на схемі."
@@ -269,6 +352,44 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     }, `Додано наступний етап ${selected.label}${letter}.`);
   }
 
+  function addNextFromGraph(nodeId, optionId) {
+    const tree = storedTree();
+    const node = findNode(tree, nodeId);
+    const optionIndex = node?.options?.findIndex((option) => option.id === optionId) ?? -1;
+    const option = node?.options?.[optionIndex];
+    if (!node || !option || option.next) return;
+    const updatedNode = {
+      ...node,
+      options: node.options.map((item, index) => (
+        index === optionIndex
+          ? { ...item, next: createNode(`${node.label}${optionLetter(index)}`) }
+          : item
+      ))
+    };
+    const updatedTree = replaceNode(tree, nodeId, updatedNode);
+    setForm((current) => ({ ...current, tree: updatedTree }));
+    setSelectedId(nodeId);
+    setOptionFocus(optionId);
+    setDraft(draftFromNode(updatedNode));
+    setGraphNote(`Додано наступне питання після відповіді ${optionLetter(optionIndex)}.`);
+  }
+
+  function addOptionFromGraph(nodeId) {
+    const tree = storedTree();
+    const node = findNode(tree, nodeId);
+    if (!node) return;
+    const updatedNode = {
+      ...node,
+      options: [...(node.options || []), createOption()]
+    };
+    const updatedTree = replaceNode(tree, nodeId, updatedNode);
+    setForm((current) => ({ ...current, tree: updatedTree }));
+    setSelectedId(nodeId);
+    setOptionFocus("");
+    setDraft(draftFromNode(updatedNode));
+    setGraphNote("Відповідь додано до питання.");
+  }
+
   function endBranch(index) {
     if (!draft?.options[index]?.next) return;
     changeDraft({
@@ -283,10 +404,24 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     if (!selected) return;
     let nextTree;
     if (selected.id === form.tree?.id) {
-      nextTree = selected.options?.find((option) => option.next)?.next || createNode("1");
+      const children = [...new Map(
+        (selected.options || []).filter((option) => option.next).map((option) => [option.next.id, option.next])
+      ).values()];
+      if (children.length === 1) {
+        nextTree = children[0];
+      } else if (children.length > 1) {
+        nextTree = createNode("1");
+        nextTree.options = children.map((child, index) => ({
+          ...blankOption(`root-${index + 1}`),
+          title: `Перейти до питання ${child.label}`,
+          next: child
+        }));
+      } else {
+        nextTree = createNode("1");
+      }
       setGraphNote("Питання видалено.");
     } else {
-      nextTree = removeNode(formTreeFromApi(apiTreeFromForm(form.tree)), selected.id);
+      nextTree = removeNode(form.tree, selected.id);
     }
     setForm((current) => ({ ...current, tree: nextTree }));
     setSelectedId("");
@@ -323,7 +458,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
   }
 
   return (
-    <section>
+    <section className="mx-auto w-full border border-zinc-800 bg-zinc-900/30 p-3 sm:p-5 lg:p-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{initial ? "Редагування" : "Новий кейс"}</p>
@@ -405,7 +540,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         </div>
 
         {branching && form.tree ? (
-          <section className={draft ? "lg:pr-[26rem]" : ""}>
+          <section className={draft ? "lg:pr-[38rem]" : ""}>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
@@ -413,19 +548,27 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
               </div>
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} питань</p>
             </div>
-            <ScenarioGraph tree={liveTree || form.tree} selectedId={selectedId} selectedOptionId={optionFocus} onSelectNode={openNode} onSelectOption={openOption} />
+            <ScenarioGraph
+              tree={liveTree || form.tree}
+              selectedId={selectedId}
+              selectedOptionId={optionFocus}
+              onSelectNode={openNode}
+              onSelectOption={openOption}
+              onAddNext={addNextFromGraph}
+              onAddOption={addOptionFromGraph}
+            />
           </section>
         ) : null}
 
         {branching && draft && selected ? (
-          <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl">
+          <aside className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {selected.label}</p>
                 <h2 className="mt-1 font-display text-3xl text-zinc-50">{draft.options.some((option) => option.id === optionFocus) ? `Варіант ${optionLetter(draft.options.findIndex((option) => option.id === optionFocus))}` : "Питання"}</h2>
               </div>
               <div className="flex gap-2">
-                {selected.id !== form.tree?.id ? <button type="button" onClick={removeQuestion} className="border border-red-900 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Видалити питання</button> : null}
+                <button type="button" onClick={removeQuestion} className="border border-red-900 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Видалити питання</button>
                 <button type="button" onClick={() => { applyDraft(); setSelectedId(""); setOptionFocus(""); setDraft(null); }} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-300">Закрити</button>
               </div>
             </div>
@@ -480,7 +623,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                         )}
                       </div>
                     </div>
-                    <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до +40. Підсумок учасника лишається в межах 0–100.</p>
+                    <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до 0. Підсумок учасника лишається в межах 0–100.</p>
                   </>
                 );
               })()}
@@ -517,10 +660,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
           <button type="button" onClick={() => patch({ steps: [...form.steps, blankStep()] })} className="border border-zinc-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-300">Додати крок</button>
         ) : null}
 
-        <details className="border border-zinc-800 bg-zinc-950 p-4">
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-olive-300">Структура кейса</summary>
-          <pre className="mt-3 overflow-auto text-xs leading-5 text-zinc-400">{JSON.stringify(payload, null, 2)}</pre>
-        </details>
         <p className="min-h-5 text-sm text-amber-400">{localError || error}</p>
         <button type="submit" disabled={pending || (branching && !form.tree)} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 disabled:opacity-50">
           {pending ? "Зберігаємо" : "Зберегти кейс"}

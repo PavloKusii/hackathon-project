@@ -1,67 +1,106 @@
 import { LETTERS } from "../scenarioTree";
 
-const NODE_W = 188;
-const NODE_H = 86;
-const CHIP_W = 168;
-const CHIP_H = 52;
-const COL = 268;
-const ROW = 124;
+const NODE_W = 292;
+const HEADER_H = 104;
+const OPTION_H = 50;
+const ADD_OPTION_H = 44;
+const NODE_GAP = 32;
+const COL = 390;
 const PAD = 28;
 
-function ready(node) {
-  const prompt = (node.prompt || "").trim().length >= 10;
-  const titles = (node.options || []).every((option) => (option.title || "").trim().length >= 2);
-  return prompt && titles;
+function nodeHeight(node) {
+  const optionCount = Array.isArray(node?.options) ? node.options.length : 0;
+  return HEADER_H + Math.max(1, optionCount) * OPTION_H + ADD_OPTION_H;
 }
 
-function place(node, depth, rowStart, nodes, edges, chips) {
-  const items = (node.options || []).map((option, index) => ({ option, index }));
-  if (!items.length) {
-    nodes.push({ node, x: PAD + depth * COL, y: PAD + rowStart * ROW });
-    return rowStart + 1;
-  }
-  let row = rowStart;
-  const placed = [];
-  items.forEach((item) => {
-    const letter = LETTERS[item.index] || String(item.index + 1);
-    if (item.option.next) {
-      const start = row;
-      row = place(item.option.next, depth + 1, row, nodes, edges, chips);
-      placed.push({ letter, title: item.option.title, optionId: item.option.id, target: item.option.next.id, mid: (start + row - 1) / 2 });
-      return;
-    }
-    const chipId = `${node.id}-${item.option.id}`;
-    chips.push({
-      id: chipId,
-      parentId: node.id,
-      optionId: item.option.id,
-      letter,
-      title: item.option.title,
-      x: PAD + (depth + 1) * COL,
-      y: PAD + row * ROW + (NODE_H - CHIP_H) / 2
+function layout(root) {
+  const graphNodes = [];
+  const graphEdges = [];
+  const byId = new Map();
+  function collect(node) {
+    if (!node || typeof node !== "object" || typeof node.id !== "string" || !node.id || byId.has(node.id)) return;
+    byId.set(node.id, node);
+    graphNodes.push(node);
+    (Array.isArray(node.options) ? node.options : []).forEach((option, index) => {
+      if (!option || typeof option !== "object" || !option.next) return;
+      graphEdges.push({ fromId: node.id, toId: option.next.id, option, index });
+      collect(option.next);
     });
-    placed.push({ letter, title: item.option.title, optionId: item.option.id, target: chipId, mid: row });
-    row += 1;
+  }
+  collect(root);
+  if (!graphNodes.length) return { nodes: [], edges: [] };
+
+  const indegree = new Map(graphNodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(graphNodes.map((node) => [node.id, []]));
+  graphEdges.forEach((edge) => {
+    if (!indegree.has(edge.toId)) return;
+    indegree.set(edge.toId, (indegree.get(edge.toId) || 0) + 1);
+    outgoing.get(edge.fromId)?.push(edge);
   });
-  const mid = (rowStart + row - 1) / 2;
-  nodes.push({ node, x: PAD + depth * COL, y: PAD + mid * ROW });
-  placed.forEach((item) => {
-    edges.push({ from: node.id, to: item.target, optionId: item.optionId, letter: item.letter, title: item.title });
+  const ready = graphNodes.filter((node) => indegree.get(node.id) === 0);
+  const depth = new Map([[root.id, 0]]);
+  const ordered = [];
+  while (ready.length) {
+    const node = ready.shift();
+    ordered.push(node);
+    (outgoing.get(node.id) || []).forEach((edge) => {
+      depth.set(edge.toId, Math.max(depth.get(edge.toId) || 0, (depth.get(node.id) || 0) + 1));
+      indegree.set(edge.toId, indegree.get(edge.toId) - 1);
+      if (indegree.get(edge.toId) === 0) ready.push(byId.get(edge.toId));
+    });
+  }
+  if (ordered.length < graphNodes.length) {
+    const level = Math.max(0, ...depth.values()) + 1;
+    graphNodes.forEach((node) => {
+      if (ordered.includes(node)) return;
+      depth.set(node.id, level);
+      ordered.push(node);
+    });
+  }
+
+  const columns = new Map();
+  ordered.forEach((node) => {
+    const level = depth.get(node.id) || 0;
+    if (!columns.has(level)) columns.set(level, []);
+    columns.get(level).push(node);
   });
-  return row;
+  const positionedById = new Map();
+  [...columns.entries()].forEach(([level, nodes]) => {
+    let top = PAD;
+    nodes.forEach((node) => {
+      const positioned = {
+        node,
+        x: PAD + level * COL,
+        y: top,
+        height: nodeHeight(node)
+      };
+      positionedById.set(node.id, positioned);
+      top += positioned.height + NODE_GAP;
+    });
+  });
+  const nodes = ordered.map((node) => positionedById.get(node.id));
+  const edges = graphEdges.map((edge) => ({
+    ...edge,
+    from: positionedById.get(edge.fromId),
+    to: positionedById.get(edge.toId),
+    letter: LETTERS[edge.index] || String(edge.index + 1),
+    optionId: edge.option.id
+  })).filter((edge) => edge.from && edge.to);
+  return { nodes, edges };
 }
 
-export default function ScenarioGraph({ tree, selectedId, selectedOptionId, onSelectNode, onSelectOption }) {
-  const nodes = [];
-  const edges = [];
-  const chips = [];
-  place(tree, 0, 0, nodes, edges, chips);
-  const byId = new Map(nodes.map((item) => [item.node.id, item]));
-  chips.forEach((chip) => byId.set(chip.id, { x: chip.x, y: chip.y, chip: true }));
-  const points = [...nodes.map((item) => item.x + NODE_W), ...chips.map((chip) => chip.x + CHIP_W)];
-  const bottoms = [...nodes.map((item) => item.y + NODE_H), ...chips.map((chip) => chip.y + CHIP_H)];
-  const width = Math.max(...points) + PAD;
-  const height = Math.max(...bottoms) + PAD;
+export default function ScenarioGraph({
+  tree,
+  selectedId,
+  selectedOptionId,
+  onSelectNode,
+  onSelectOption,
+  onAddNext,
+  onAddOption
+}) {
+  const { nodes, edges } = layout(tree);
+  const width = Math.max(420, ...nodes.map((item) => item.x + NODE_W + PAD));
+  const height = Math.max(420, ...nodes.map((item) => item.y + item.height + PAD));
 
   return (
     <div className="overflow-auto border border-zinc-800 bg-zinc-950/80" style={{ minHeight: 420 }}>
@@ -73,75 +112,96 @@ export default function ScenarioGraph({ tree, selectedId, selectedOptionId, onSe
             </marker>
           </defs>
           {edges.map((edge) => {
-            const from = byId.get(edge.from);
-            const to = byId.get(edge.to);
-            if (!from || !to) return null;
-            const x1 = from.x + NODE_W;
-            const y1 = from.y + (from.chip ? CHIP_H : NODE_H) / 2;
-            const x2 = to.x;
-            const y2 = to.y + (to.chip ? CHIP_H : NODE_H) / 2;
-            const mid = x1 + (x2 - x1) * 0.55;
+            const x1 = edge.from.x + NODE_W;
+            const y1 = edge.from.y + HEADER_H + edge.index * OPTION_H + OPTION_H / 2;
+            const x2 = edge.to.x;
+            const y2 = edge.to.y + HEADER_H / 2;
+            const bend = x1 + (x2 - x1) / 2;
             return (
-              <path
-                key={`${edge.from}-${edge.to}`}
-                d={`M ${x1} ${y1} H ${mid} V ${y2} H ${x2 - 2}`}
-                fill="none"
-                stroke="#3f4a22"
-                strokeWidth="2"
-                markerEnd="url(#scenario-arrow)"
-              />
+              <g key={`${edge.from.node.id}-${edge.optionId}`}>
+                <path
+                  d={`M ${x1} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x2 - 3} ${y2}`}
+                  fill="none"
+                  stroke="#596b2b"
+                  strokeWidth="2"
+                  markerEnd="url(#scenario-arrow)"
+                />
+                <text
+                  x={bend}
+                  y={(y1 + y2) / 2 - 6}
+                  textAnchor="middle"
+                  fill="#d9e3a4"
+                  fontFamily="IBM Plex Mono, monospace"
+                  fontSize="12"
+                  fontWeight="600"
+                >
+                  {edge.letter}
+                </text>
+              </g>
             );
           })}
         </svg>
-        {edges.map((edge) => {
-          const from = byId.get(edge.from);
-          const to = byId.get(edge.to);
-          if (!from || !to || to.chip) return null;
-          const x1 = from.x + NODE_W;
-          const x2 = to.x;
-          const mid = x1 + (x2 - x1) * 0.55;
-          const y = from.y + (from.chip ? CHIP_H : NODE_H) / 2;
-          return (
-            <button
-              key={`label-${edge.from}-${edge.to}`}
-              type="button"
-              onClick={() => onSelectOption(edge.from, edge.optionId)}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] ${selectedId === edge.from && selectedOptionId === edge.optionId ? "border-olive-300 bg-olive-900 text-olive-100" : "border-olive-700 bg-zinc-950 text-olive-200"}`}
-              style={{ left: mid, top: y }}
-              title={edge.title ? `Варіант ${edge.letter}: ${edge.title}` : `Варіант ${edge.letter}`}
-            >
-              {edge.letter}
-            </button>
-          );
-        })}
-        {chips.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => onSelectOption(chip.parentId, chip.optionId)}
-            className={`absolute overflow-hidden border px-3 py-2 text-left ${selectedId === chip.parentId && selectedOptionId === chip.optionId ? "border-olive-300 bg-olive-950" : "border-zinc-700 bg-zinc-900 hover:border-olive-600"}`}
-            style={{ left: chip.x, top: chip.y, width: CHIP_W, height: CHIP_H }}
-          >
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-olive-300">Варіант {chip.letter}</span>
-            <span className="mt-0.5 block truncate text-xs text-zinc-400">{(chip.title || "").trim() || "Ще без назви"}</span>
-          </button>
-        ))}
-        {nodes.map(({ node, x, y }) => {
+        {nodes.map(({ node, x, y, height: cardHeight }) => {
           const active = node.id === selectedId && !selectedOptionId;
-          const filled = ready(node);
+          const options = Array.isArray(node.options) ? node.options : [];
           return (
-            <button
+            <article
               key={node.id}
-              type="button"
-              onClick={() => onSelectNode(node.id)}
-              className={`absolute overflow-hidden border px-3 py-2 text-left ${active ? "border-olive-400 bg-olive-950" : "border-zinc-700 bg-zinc-900 hover:border-olive-600"}`}
-              style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
+              className={`absolute overflow-hidden border ${active ? "border-olive-400 bg-olive-950" : "border-zinc-700 bg-zinc-900"}`}
+              style={{ left: x, top: y, width: NODE_W, height: cardHeight }}
             >
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {node.label}</span>
-              <span className={`mt-1 line-clamp-2 text-sm leading-5 ${filled ? "text-zinc-100" : "text-zinc-500"}`}>
-                {(node.prompt || "").trim() || "Ще не описано"}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelectNode(node.id)}
+                className="block h-[104px] w-full border-b border-zinc-700 px-3 py-2 text-left hover:bg-olive-950/70"
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {node.label}</span>
+                <span className={`mt-1 block line-clamp-3 text-sm leading-5 ${(node.prompt || "").trim() ? "text-zinc-100" : "text-zinc-500"}`}>
+                  {(node.prompt || "").trim() || "Натисніть, щоб додати текст питання"}
+                </span>
+              </button>
+              {options.map((rawOption, index) => {
+                const option = rawOption && typeof rawOption === "object"
+                  ? rawOption
+                  : { id: `option-${index + 1}`, title: "" };
+                const letter = LETTERS[index] || String(index + 1);
+                const selected = node.id === selectedId && option.id === selectedOptionId;
+                return (
+                  <div key={option.id} className="flex h-[50px] items-center gap-2 border-b border-zinc-800 px-2 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => onSelectOption(node.id, option.id)}
+                      title={option.title || `Відповідь ${letter}`}
+                      className={`min-w-0 flex-1 truncate border px-2 py-1.5 text-left text-xs ${selected ? "border-olive-400 bg-olive-900 text-olive-100" : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-olive-600"}`}
+                    >
+                      <span className="mr-2 font-mono text-[10px] uppercase text-olive-300">{letter}</span>
+                      {option.title?.trim() || `Відповідь ${letter}`}
+                    </button>
+                    {!option.next ? (
+                      <button
+                        type="button"
+                        onClick={() => onAddNext(node.id, option.id)}
+                        aria-label={`Додати наступне питання після відповіді ${letter}`}
+                        title={`Додати наступне питання після відповіді ${letter}`}
+                        className="grid h-8 w-8 shrink-0 place-items-center border border-olive-700 font-mono text-sm text-olive-200 hover:border-olive-400 hover:bg-olive-900"
+                      >
+                        +
+                      </button>
+                    ) : (
+                      <span className="w-8 shrink-0 text-center font-mono text-[10px] text-olive-400" aria-hidden="true">→</span>
+                    )}
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => onAddOption(node.id)}
+                className="flex h-[44px] w-full items-center justify-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-olive-300 hover:bg-olive-950/70 hover:text-olive-100"
+              >
+                <span aria-hidden="true" className="text-sm">+</span>
+                Додати відповідь
+              </button>
+            </article>
           );
         })}
       </div>

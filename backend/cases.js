@@ -56,6 +56,51 @@ function slug(value) {
   return text(value, 24).toUpperCase().replace(/[^A-Z0-9А-ЯІЇЄҐ._-]/gi, "").slice(0, 16);
 }
 
+function normalizeCaseDeltas(value) {
+  let changed = false;
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      changed = normalizeCaseDeltas(item) || changed;
+    });
+    return changed;
+  }
+  if (!value || typeof value !== "object") return false;
+  if (value.deltas && typeof value.deltas === "object" && !Array.isArray(value.deltas)) {
+    METRICS.forEach((key) => {
+      const score = Number(value.deltas[key]);
+      if (Number.isFinite(score) && score > 0) {
+        value.deltas[key] = 0;
+        changed = true;
+      }
+    });
+  }
+  Object.values(value).forEach((item) => {
+    changed = normalizeCaseDeltas(item) || changed;
+  });
+  return changed;
+}
+
+export async function migrateCaseDeltas() {
+  const files = [];
+  try {
+    const scenarioFiles = await fs.readdir(scenariosDir);
+    files.push(...scenarioFiles.filter((file) => file.endsWith(".json")).map((file) => path.join(scenariosDir, file)));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  files.push(casesFile, overridesFile);
+  for (const file of files) {
+    let data;
+    try {
+      data = JSON.parse(await fs.readFile(file, "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (normalizeCaseDeltas(data)) await writeJson(file, data);
+  }
+}
+
 function generatedScenarioCode(id) {
   const suffix = crypto.createHash("sha256").update(String(id)).digest("hex").slice(0, 8).toUpperCase();
   return `SC-${suffix}`;
@@ -77,7 +122,6 @@ export function validateCase(body) {
   if (body?.tree) {
     const tree = validateNode(body.tree, "1", 1);
     return {
-      code,
       title,
       field,
       summary,
@@ -92,10 +136,22 @@ export function validateCase(body) {
       steps: flattenTree(tree)
     };
   }
-  const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
+  const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 200) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
   const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
-  return { code, title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
+  const stepIds = new Set();
+  steps.forEach((step, stepIndex) => {
+    if (stepIds.has(step.id)) throw fail(400, `Крок ${stepIndex + 1}: ідентифікатор питання має бути унікальним.`);
+    stepIds.add(step.id);
+  });
+  steps.forEach((step, stepIndex) => {
+    step.options.forEach((option, optionIndex) => {
+      if (option.nextStepId && !stepIds.has(option.nextStepId)) {
+        throw fail(400, `Крок ${stepIndex + 1}: перехід варіанта ${optionIndex + 1} веде до невідомого питання.`);
+      }
+    });
+  });
+  return { title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
 }
 
 export function scenarioTimer(scenario) {
@@ -124,12 +180,16 @@ function normalizeNorms(body) {
 function validateLinearStep(step, stepIndex) {
   const prompt = text(step?.prompt, 2000);
   if (prompt.length < 10) throw fail(400, `Крок ${stepIndex + 1}: опишіть ситуацію докладніше.`);
-  const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 4) : [];
+  const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 100) : [];
   if (rawOptions.length < 2) throw fail(400, `Крок ${stepIndex + 1}: потрібно щонайменше два варіанти.`);
   return {
     id: text(step?.id, 40) || `step-${stepIndex + 1}`,
     prompt,
-    options: rawOptions.map((option, optionIndex) => sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`))
+    options: rawOptions.map((option, optionIndex) => ({
+      ...sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`),
+      nextStepId: text(option?.nextStepId, 40),
+      end: option?.end === true
+    }))
   };
 }
 
@@ -160,10 +220,10 @@ function sanitizeOption(option, optionIndex, where) {
   const deltas = {};
   METRICS.forEach((key) => {
     const number = Number(option?.deltas?.[key] ?? option?.[key] ?? 0);
-    if (!Number.isFinite(number) || number < -40 || number > 40) {
-      throw fail(400, "Зміна шкали має бути числом від -40 до 40.");
+    if (!Number.isFinite(number) || number < -40) {
+      throw fail(400, "Зміна шкали має бути числом від -40 до 0.");
     }
-    deltas[key] = Math.round(number);
+    deltas[key] = Math.min(0, Math.round(number));
   });
   const badges = String(option?.badges || "")
     .split(",")
@@ -250,6 +310,9 @@ export async function loadCatalog() {
     readJson(overridesFile, {}),
     readJson(casesFile, { cases: [] })
   ]);
+  builtins.forEach(normalizeCaseDeltas);
+  normalizeCaseDeltas(overrides);
+  normalizeCaseDeltas(stored);
   const custom = Array.isArray(stored.cases) ? stored.cases : [];
   const official = builtins.map((item) => ({
     ...applyOverride({
@@ -340,6 +403,7 @@ export function attachCaseRoutes(app, hooks = {}) {
       return;
     }
     const cases = await readCases();
+    cases.forEach(normalizeCaseDeltas);
     const queue = cases
       .filter((item) => item.visibility === "public" || item.status === "pending" || item.status === "published" || item.status === "rejected")
       .map(manageView)
@@ -371,7 +435,19 @@ export function attachCaseRoutes(app, hooks = {}) {
         reviewNote: ""
       };
       await enqueue(async () => {
+        const catalog = await loadCatalog();
         const cases = await readCases();
+        const usedCodes = new Set(catalog.all.map((item) => String(item.code || "").toUpperCase()).filter(Boolean));
+        let sequence = catalog.all.reduce((maximum, item) => {
+          const match = /^EG-(\d+)$/i.exec(String(item.code || ""));
+          return match ? Math.max(maximum, Number(match[1])) : maximum;
+        }, 0) + 1;
+        let code = `EG-${String(sequence).padStart(2, "0")}`;
+        while (usedCodes.has(code)) {
+          sequence += 1;
+          code = `EG-${String(sequence).padStart(2, "0")}`;
+        }
+        created.code = code;
         cases.push(created);
         await writeJson(casesFile, { cases });
       });

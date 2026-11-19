@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import crypto from "crypto";
 import os from "os";
 import { attachAuth, userFromToken } from "./auth.js";
-import { appendSession, attachCaseRoutes, hostAllowed, loadCatalog, scenarioTimer } from "./cases.js";
+import { appendSession, attachCaseRoutes, hostAllowed, loadCatalog, migrateCaseDeltas, scenarioTimer } from "./cases.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -266,6 +266,7 @@ app.get("/api/host", (req, res) => {
 
 io.on("connection", (socket) => {
   socket.on("create_room", async ({ scenarioId, groupName, token } = {}) => {
+    await migrateCaseDeltas();
     await refreshScenarios();
     const user = await userFromToken(token);
     const scenario = scenarioById(scenarioId);
