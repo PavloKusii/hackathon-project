@@ -339,7 +339,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <Header screen={screen} role={role} user={session?.user} onNavigate={guard} onLogout={logout} />
-      <main className={`mx-auto w-full px-4 py-6 sm:px-6 sm:py-10 ${screen === "caseForm" ? "max-w-none px-3 py-3 sm:px-5 sm:py-5" : "max-w-6xl"}`}>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         {screen === "dashboard" && <Dashboard role={role} scenarios={scenarios} onNavigate={guard} onStart={startCase} />}
         {screen === "cases" && (
           <CaseSelector
