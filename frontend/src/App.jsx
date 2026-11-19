@@ -394,7 +394,7 @@ export default function App() {
             run={{ scores: selectedAttempt.scores, history: selectedAttempt.history }}
             stored
             onAgain={() => startCase(selectedAttempt.scenarioId)}
-            onHome={() => openScreen("results")}
+            onHome={() => openScreen("userStats")}
           />
         )}
         {screen === "caseForm" && (organizer || (admin && editing)) && (

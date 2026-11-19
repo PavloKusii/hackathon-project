@@ -115,6 +115,7 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
 
   function next() {
     if (!run.revealed) return;
+    
     if (scenario.tree) {
       if (!picked?.next) {
         onDebrief();
@@ -124,15 +125,20 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
       window.scrollTo(0, 0);
       return;
     }
+
+    // Перевіряємо наявність наступного кроку за ID в обраній опції
     const nextStepId = picked?.nextStepId;
-    const nextStepIndex = scenario.steps.findIndex((item) => item.id === nextStepId);
-    if (nextStepId && nextStepIndex < 0) return;
-    if (!nextStepId && last) {
-      onDebrief();
-      return;
+    if (nextStepId) {
+      const nextStepIndex = scenario.steps.findIndex((item) => item.id === nextStepId);
+      if (nextStepIndex >= 0) {
+        setRun({ ...run, stepIndex: nextStepIndex, revealed: false, lockedId: "" });
+        window.scrollTo(0, 0);
+        return;
+      }
     }
-    setRun({ ...run, stepIndex: nextStepId ? nextStepIndex : run.stepIndex + 1, revealed: false, lockedId: "" });
-    window.scrollTo(0, 0);
+
+    // Якщо nextStepId відсутній (фінал / 3-тє питання) — одразу завершуємо симуляцію
+    onDebrief();
   }
 
   if (!step) return null;
@@ -184,4 +190,3 @@ export default function Simulation({ scenario, run, setRun, onExit, onDebrief })
     </section>
   );
 }
-

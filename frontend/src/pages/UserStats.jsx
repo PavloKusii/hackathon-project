@@ -55,7 +55,7 @@ export default function UserStats({ user, attempts, onBack, onStart, onOpen }) {
         <h2 className="font-display text-2xl text-white">Останні проходження</h2>
         {completed.length ? (
           <div className="mt-4 divide-y divide-zinc-800">
-            {completed.slice(0, 6).map((item) => (
+            {completed.map((item) => (
               <button key={item.id} type="button" onClick={() => onOpen(item)} className="flex w-full flex-wrap items-center justify-between gap-3 py-3 text-left">
                 <div>
                   <p className="text-zinc-200">{item.scenarioTitle}</p>
