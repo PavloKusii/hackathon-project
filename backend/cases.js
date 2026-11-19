@@ -56,11 +56,16 @@ function slug(value) {
   return text(value, 24).toUpperCase().replace(/[^A-Z0-9А-ЯІЇЄҐ._-]/gi, "").slice(0, 16);
 }
 
+function generatedScenarioCode(id) {
+  const suffix = crypto.createHash("sha256").update(String(id)).digest("hex").slice(0, 8).toUpperCase();
+  return `SC-${suffix}`;
+}
+
 export function validateCase(body) {
   const title = text(body?.title, 160);
   const field = text(body?.field, 80);
   const summary = text(body?.summary, 600);
-  const code = slug(body?.code) || "CASE";
+  const code = slug(body?.code);
   const visibility = body?.visibility === "public" ? "public" : "local";
   if (title.length < 3) throw fail(400, "Назва кейса має містити щонайменше 3 символи.");
   if (field.length < 2) throw fail(400, "Вкажіть галузь або тему кейса.");
@@ -246,13 +251,16 @@ export async function loadCatalog() {
     readJson(casesFile, { cases: [] })
   ]);
   const custom = Array.isArray(stored.cases) ? stored.cases : [];
-  const official = builtins.map((item) => applyOverride({
-    ...item,
-    source: "builtin",
-    status: "published",
-    visibility: "public"
-  }, overrides[item.id]));
-  const all = [...official, ...custom.filter((item) => item?.id && Array.isArray(item.steps))];
+  const official = builtins.map((item) => ({
+    ...applyOverride({
+      ...item,
+      source: "builtin",
+      status: "published",
+      visibility: "public"
+    }, overrides[item.id]),
+    code: generatedScenarioCode(item.id)
+  }));
+  const all = [...official, ...custom.filter((item) => item?.id && Array.isArray(item.steps)).map((item) => ({ ...item, code: item.code || generatedScenarioCode(item.id) }))];
   const byId = new Map(all.map((item) => [item.id, item]));
   const publicList = all
     .filter((item) => item.source === "builtin" || item.status === "published")
@@ -349,9 +357,11 @@ export function attachCaseRoutes(app, hooks = {}) {
       const input = validateCase(req.body);
       const now = new Date().toISOString();
       const status = input.visibility === "public" ? "pending" : "local";
+      const id = `case-${crypto.randomBytes(6).toString("hex")}`;
       const created = {
-        id: `case-${crypto.randomBytes(6).toString("hex")}`,
+        id,
         ...input,
+        code: input.code || generatedScenarioCode(id),
         source: "custom",
         status,
         ownerId: user.id,
@@ -409,7 +419,7 @@ export function attachCaseRoutes(app, hooks = {}) {
         const cases = await readCases();
         const target = cases.find((item) => item.id === current.id);
         if (!target) throw fail(404, "Кейс не знайдено.");
-        target.code = input.code;
+        target.code = input.code || target.code || generatedScenarioCode(target.id);
         target.title = input.title;
         target.field = input.field;
         target.summary = input.summary;
