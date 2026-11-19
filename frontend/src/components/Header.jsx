@@ -42,10 +42,9 @@ export default function Header({ screen, role, user, onNavigate, onLogout }) {
           </button>
           <nav aria-label="Основна навігація" className="flex gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:justify-end lg:overflow-visible lg:pb-0">
             {NAVIGATION.map((item) => <NavButton key={item.screen} on={item.active(screen)} onClick={() => onNavigate(item.screen)}>{item.label}</NavButton>)}
-            {role !== "guest" ? <NavButton on={screen === "userStats" || screen === "result"} onClick={() => onNavigate("userStats")}>Статистика</NavButton> : null}
+            {role !== "guest" ? <NavButton on={["userStats", "result", "analytics", "dynamics", "organizerStats"].includes(screen)} onClick={() => onNavigate(organizer ? "analytics" : "userStats")}>Статистика</NavButton> : null}
             {organizer ? <NavButton on={screen === "caseForm"} onClick={() => onNavigate("caseForm")}>Створити кейс</NavButton> : null}
             {organizer ? <NavButton on={screen === "facilitator"} onClick={() => onNavigate("facilitator")}>Заняття</NavButton> : null}
-            {organizer ? <NavButton on={["dynamics", "analytics", "organizerStats"].includes(screen)} onClick={() => onNavigate("analytics")}>Аналітика</NavButton> : null}
             {role === "superadmin" ? <NavButton on={screen === "moderation"} onClick={() => onNavigate("moderation")}>Модерація</NavButton> : null}
           </nav>
         </div>

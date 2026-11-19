@@ -52,24 +52,6 @@ export default function UserStats({ user, attempts, onBack, onStart, onOpen }) {
         <div className="mt-4"><TrendChart rows={trend} /></div>
       </section>
       <section className="mt-4 border border-zinc-800 bg-zinc-900/70 p-5">
-        <h2 className="font-display text-2xl text-white">Останні проходження</h2>
-        {completed.length ? (
-          <div className="mt-4 divide-y divide-zinc-800">
-            {completed.map((item) => (
-              <button key={item.id} type="button" onClick={() => onOpen(item)} className="flex w-full flex-wrap items-center justify-between gap-3 py-3 text-left">
-                <div>
-                  <p className="text-zinc-200">{item.scenarioTitle}</p>
-                  <p className="mt-1 font-mono text-[10px] text-zinc-500">{new Date(item.createdAt).toLocaleString("uk-UA")} · {item.history?.length || 0} рішень</p>
-                </div>
-                <div className="flex gap-3 font-mono text-xs">
-                  {METRICS.map((metric) => <span key={metric.key} className="text-olive-300">{metric.label} {item.scores?.[metric.key] ?? 0}</span>)}
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : <p className="mt-3 text-sm text-zinc-400">Історія з’явиться після першого завершеного сценарію в обліковому записі.</p>}
-      </section>
-      <section className="mt-4 border border-zinc-800 bg-zinc-900/70 p-5">
         <h2 className="font-display text-2xl text-white">Результати проходжень</h2>
         <div className="mt-4 flex flex-col gap-3">
           {completed.map((item) => {
@@ -80,10 +62,14 @@ export default function UserStats({ user, attempts, onBack, onStart, onOpen }) {
                   <p className="text-zinc-100">{item.scenarioTitle}</p>
                   <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-widest ${passed ? "border-olive-600 text-olive-300" : "border-amber-700 text-amber-300"}`}>{passed ? "Пройшов тест" : "Не пройшов тест"}</span>
                 </div>
+                <p className="mt-1 font-mono text-[10px] text-zinc-500">{new Date(item.createdAt).toLocaleString("uk-UA")} · {item.history?.length || 0} рішень</p>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-olive-300">
+                  {METRICS.map((metric) => <span key={metric.key}>{metric.label}: {item.scores?.[metric.key] ?? 0}</span>)}
+                </div>
               </button>
             );
           })}
-          {!completed.length ? <p className="text-sm text-zinc-400">Розбори з’являться після завершення проходження.</p> : null}
+          {!completed.length ? <p className="text-sm text-zinc-400">Результати з’являться після першого завершеного проходження.</p> : null}
         </div>
       </section>
       <button type="button" onClick={onStart} className="mt-5 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl text-white">Продовжити тренування →</button>

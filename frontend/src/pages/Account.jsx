@@ -66,7 +66,6 @@ export default function Account({ session, attempts = [], sessions = [], onBack,
       {role === "participant" ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Card kicker="Проходження" title="Моя статистика" text={`${attempts.length} збережених розборів і динаміка шкал.`} onClick={() => onOpen("userStats")} />
-          <Card kicker="Розбір" title="Результати" text="Ваші відповіді, слабші рішення і пояснення." onClick={() => onOpen("results")} />
           <Card kicker="Практика" title="Публічні кейси" text="Самостійне проходження. Таймер з’являється лише тоді, коли його задав організатор." onClick={() => onOpen("cases")} />
           <Card kicker="Група" title="Код кімнати" text="Вхід за кодом або QR: гість або цей обліковий запис." onClick={() => onOpen("participant")} />
         </div>
@@ -76,10 +75,7 @@ export default function Account({ session, attempts = [], sessions = [], onBack,
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Card kicker="Автор" title="Новий кейс" text="Створення власного кейса або подання на публічну модерацію." onClick={() => onOpen("caseForm")} />
           <Card kicker="Кімната" title="Групове заняття" text={`${sessions.length} збережених сесій. Учасники лишаються анонімними.`} onClick={() => onOpen("facilitator")} />
-          <Card kicker="Група" title="Динаміка проходження" text="Зважена лінія шкал від кроку до кроку." onClick={() => onOpen("dynamics")} />
-          <Card kicker="Група" title="Аналітика занять" text="Відсотки варіантів і загальна статистика сесій." onClick={() => onOpen("analytics")} />
-          <Card kicker="Особисте" title="Моя статистика" text="Ваші власні проходження, окремо від групи." onClick={() => onOpen("userStats")} />
-          <Card kicker="Особисте" title="Результати" text="Детальний розбір збережених відповідей." onClick={() => onOpen("results")} />
+          <Card kicker="Статистика" title="Статистика проходжень і занять" text="Особисті результати та зведені показники занять." onClick={() => onOpen("analytics")} />
         </div>
       ) : null}
 

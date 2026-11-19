@@ -306,17 +306,17 @@ export default function App() {
     } finally {
       setFormPending(false);
     }
+  }
 
-    async function removeCase(item) {
-      if (!window.confirm(`Видалити кейс «${item.title}»?`)) return;
-      try {
-        await deleteCase(session.token, item.id);
-        await loadScenarios();
-        await refreshPrivate(session);
-      } catch (error) {
-        setFormError(error.message);
-        openScreen("cases");
-      }
+  async function removeCase(item) {
+    if (!window.confirm(`Видалити кейс «${item.title}»?`)) return;
+    try {
+      await deleteCase(session.token, item.id);
+      await loadScenarios();
+      await refreshPrivate(session);
+    } catch (error) {
+      setFormError(error.message);
+      openScreen("cases");
     }
   }
 
@@ -410,7 +410,7 @@ export default function App() {
             run={{ scores: selectedAttempt.scores, history: selectedAttempt.history }}
             stored
             onAgain={() => startCase(selectedAttempt.scenarioId)}
-            onHome={() => openScreen("userStats")}
+            onHome={() => openScreen(organizer ? "analytics" : "userStats")}
           />
         )}
         {screen === "caseForm" && (organizer || (admin && editing)) && (
@@ -433,6 +433,7 @@ export default function App() {
             attempts={attempts}
             initialTab={screen === "dynamics" ? "dynamics" : screen === "organizerStats" ? "overview" : "analytics"}
             onBack={() => openScreen("dashboard")}
+            onOpenAttempt={(item) => { setSelectedAttempt(item); openScreen("result"); }}
           />
         )}
       </main>

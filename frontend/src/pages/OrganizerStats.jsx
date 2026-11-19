@@ -22,7 +22,7 @@ function groupTrend(session) {
   });
 }
 
-export default function OrganizerStats({ sessions, scenarios, attempts = [], initialTab = "overview", onBack }) {
+export default function OrganizerStats({ sessions, scenarios, attempts = [], initialTab = "overview", onBack, onOpenAttempt }) {
   const [tab, setTab] = useState(initialTab);
   const [mode, setMode] = useState("own");
   const [sessionId, setSessionId] = useState(sessions[0]?.id || "");
@@ -32,6 +32,11 @@ export default function OrganizerStats({ sessions, scenarios, attempts = [], ini
     people: sessions.reduce((sum, item) => sum + (item.participantPeak || 0), 0),
     answers: sessions.reduce((sum, item) => sum + (item.steps || []).reduce((inner, step) => inner + (step.options || []).reduce((count, option) => count + (option.count || 0), 0), 0), 0)
   }), [sessions]);
+  const personalStats = useMemo(() => ({
+    integrity: attempts.length ? Math.round(attempts.reduce((sum, item) => sum + (item.scores?.integrity || 0), 0) / attempts.length) : 0,
+    trust: attempts.length ? Math.round(attempts.reduce((sum, item) => sum + (item.scores?.trust || 0), 0) / attempts.length) : 0,
+    effectiveness: attempts.length ? Math.round(attempts.reduce((sum, item) => sum + (item.scores?.effectiveness || 0), 0) / attempts.length) : 0
+  }), [attempts]);
 
   return (
     <section>
@@ -48,29 +53,42 @@ export default function OrganizerStats({ sessions, scenarios, attempts = [], ini
       </div>
       {mode === "own" ? (
         <>
-          <section className="mt-5 border border-zinc-800 bg-zinc-900/70 p-5">
-            <h2 className="font-display text-2xl text-white">Мої проходження</h2>
-            {attempts.length ? (
-              <div className="mt-4 flex flex-col gap-3">
-                {attempts.map((item) => {
-                  const passed = ["integrity", "trust", "effectiveness"].every((key) => (item.scores?.[key] ?? 0) >= 30);
-                  return (
-                    <article key={item.id} className="border border-zinc-800 bg-zinc-950 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-zinc-100">{item.scenarioTitle}</p>
-                        <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-widest ${passed ? "border-olive-600 text-olive-300" : "border-amber-700 text-amber-300"}`}>{passed ? "Пройшов тест" : "Не пройшов тест"}</span>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : <p className="mt-3 text-sm text-zinc-400">Власних проходжень ще немає.</p>}
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Проходжень", attempts.length],
+              ["Зроблено виборів", attempts.reduce((sum, item) => sum + (item.history?.length || 0), 0)],
+              ["Остання активність", attempts[0] ? new Date(attempts[0].createdAt).toLocaleDateString("uk-UA") : "—"]
+            ].map(([label, value]) => (
+              <article key={label} className="border border-zinc-800 bg-zinc-900/80 p-5">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{label}</p>
+                <p className="mt-2 font-display text-4xl text-white">{value}</p>
+              </article>
+            ))}
+          </div>
+          <section className="mt-4 border border-zinc-800 bg-zinc-900/70 p-5">
+            <h2 className="font-display text-2xl text-white">Середні показники проходжень</h2>
+            <div className="mt-4"><MetricsGauges scores={personalStats} large /></div>
           </section>
           <section className="mt-4 border border-zinc-800 bg-zinc-900/70 p-5">
-            <MetricsGauges scores={attempts.length ? attempts.reduce((out, item) => {
-              METRICS.forEach((metric) => { out[metric.key] = Math.round(out[metric.key] + (item.scores?.[metric.key] || 0)); });
-              return out;
-            }, { integrity: 0, trust: 0, effectiveness: 0 }) : { integrity: 0, trust: 0, effectiveness: 0 }} large />
+            <h2 className="font-display text-2xl text-white">Результати проходжень</h2>
+            <div className="mt-4 flex flex-col gap-3">
+              {attempts.map((item) => {
+                const passed = METRICS.every((metric) => (item.scores?.[metric.key] ?? 0) >= 30);
+                return (
+                  <button key={item.id} type="button" onClick={() => onOpenAttempt?.(item)} className="border border-zinc-800 bg-zinc-950 p-4 text-left hover:border-olive-500">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-zinc-100">{item.scenarioTitle}</p>
+                      <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-widest ${passed ? "border-olive-600 text-olive-300" : "border-amber-700 text-amber-300"}`}>{passed ? "Пройшов тест" : "Не пройшов тест"}</span>
+                    </div>
+                    <p className="mt-1 font-mono text-[10px] text-zinc-500">{new Date(item.createdAt).toLocaleString("uk-UA")} · {item.history?.length || 0} рішень</p>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-olive-300">
+                      {METRICS.map((metric) => <span key={metric.key}>{metric.label}: {item.scores?.[metric.key] ?? 0}</span>)}
+                    </div>
+                  </button>
+                );
+              })}
+              {!attempts.length ? <p className="text-sm text-zinc-400">Результати з’являться після першого завершеного проходження.</p> : null}
+            </div>
           </section>
         </>
       ) : null}

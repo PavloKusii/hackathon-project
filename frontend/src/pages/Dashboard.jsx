@@ -101,18 +101,11 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
           </>
         )}
         {organizer ? (
-          <>
-            <button type="button" onClick={() => onNavigate("dynamics")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
-              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для організатора</span>
-              <span className="mt-2 block font-display text-2xl text-zinc-100">Динаміка проходження →</span>
-              <span className="mt-1 block text-sm text-zinc-400">Як змінювалась зведена картина від кроку до кроку</span>
-            </button>
-            <button type="button" onClick={() => onNavigate("analytics")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
-              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для організатора</span>
-              <span className="mt-2 block font-display text-2xl text-zinc-100">Аналітика занять →</span>
-              <span className="mt-1 block text-sm text-zinc-400">Групи, відсотки варіантів і загальна статистика сесій</span>
-            </button>
-          </>
+          <button type="button" onClick={() => onNavigate("analytics")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
+            <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для організатора</span>
+            <span className="mt-2 block font-display text-2xl text-zinc-100">Статистика →</span>
+            <span className="mt-1 block text-sm text-zinc-400">Власні проходження та статистика занять</span>
+          </button>
         ) : null}
         {admin ? (
           <button type="button" onClick={() => onNavigate("moderation")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500 sm:col-span-2">
