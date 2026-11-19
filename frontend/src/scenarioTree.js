@@ -1,7 +1,14 @@
 export const LETTERS = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ".split("");
 
 export function optionLetter(index) {
-  return LETTERS[index] || String(index + 1);
+  let value = index + 1;
+  let label = "";
+  while (value > 0) {
+    value -= 1;
+    label = LETTERS[value % LETTERS.length] + label;
+    value = Math.floor(value / LETTERS.length);
+  }
+  return label;
 }
 
 function randomId(prefix) {
@@ -39,6 +46,10 @@ export function createLinkedOption(parentLabel, index) {
   const option = blankOption(randomId("o"));
   option.next = createNode(`${parentLabel}${optionLetter(index)}`);
   return option;
+}
+
+export function createOption() {
+  return blankOption(randomId("o"));
 }
 
 export function starterSize(depth, optionCount) {

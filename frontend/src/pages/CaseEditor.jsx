@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import ScenarioGraph from "../components/ScenarioGraph";
-import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, findNode, formTreeFromApi, optionLetter, removeNode, replaceNode } from "../scenarioTree";
+import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, createOption, findNode, formTreeFromApi, optionLetter, removeNode, replaceNode } from "../scenarioTree";
 import { partsFromSeconds, secondsFromParts } from "../timer";
 
 function blankStep() {
@@ -241,10 +241,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
 
   function addOption() {
     if (!draft || !selected) return;
-    if (draft.options.length >= 12) {
-      setGraphNote("На одному питанні можна додати до 12 варіантів.");
-      return;
-    }
     changeDraft(
       { ...draft, options: [...draft.options, createLinkedOption(selected.label, draft.options.length)] },
       "Варіант додано. Нова гілка вже на схемі."
@@ -269,6 +265,44 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         optionIndex === index ? { ...option, next: createNode(`${selected.label}${letter}`) } : option
       ))
     }, `Додано наступний етап ${selected.label}${letter}.`);
+  }
+
+  function addNextFromGraph(nodeId, optionId) {
+    const tree = storedTree();
+    const node = findNode(tree, nodeId);
+    const optionIndex = node?.options?.findIndex((option) => option.id === optionId) ?? -1;
+    const option = node?.options?.[optionIndex];
+    if (!node || !option || option.next) return;
+    const updatedNode = {
+      ...node,
+      options: node.options.map((item, index) => (
+        index === optionIndex
+          ? { ...item, next: createNode(`${node.label}${optionLetter(index)}`) }
+          : item
+      ))
+    };
+    const updatedTree = replaceNode(tree, nodeId, updatedNode);
+    setForm((current) => ({ ...current, tree: updatedTree }));
+    setSelectedId(nodeId);
+    setOptionFocus(optionId);
+    setDraft(draftFromNode(updatedNode));
+    setGraphNote(`Додано наступне питання після відповіді ${optionLetter(optionIndex)}.`);
+  }
+
+  function addOptionFromGraph(nodeId) {
+    const tree = storedTree();
+    const node = findNode(tree, nodeId);
+    if (!node) return;
+    const updatedNode = {
+      ...node,
+      options: [...(node.options || []), createOption()]
+    };
+    const updatedTree = replaceNode(tree, nodeId, updatedNode);
+    setForm((current) => ({ ...current, tree: updatedTree }));
+    setSelectedId(nodeId);
+    setOptionFocus("");
+    setDraft(draftFromNode(updatedNode));
+    setGraphNote("Відповідь додано до питання.");
   }
 
   function endBranch(index) {
@@ -325,7 +359,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
   }
 
   return (
-    <section>
+    <section className="mx-auto min-h-[calc(100vh-10rem)] w-full max-w-[1800px] border border-zinc-800 bg-zinc-900/30 p-3 sm:p-5 lg:p-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{initial ? "Редагування" : "Новий кейс"}</p>
@@ -410,7 +444,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         </div>
 
         {branching && form.tree ? (
-          <section className={draft ? "lg:pr-[26rem]" : ""}>
+          <section className={draft ? "lg:pr-[38rem]" : ""}>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
@@ -418,12 +452,20 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
               </div>
               <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} питань</p>
             </div>
-            <ScenarioGraph tree={liveTree || form.tree} selectedId={selectedId} selectedOptionId={optionFocus} onSelectNode={openNode} onSelectOption={openOption} />
+            <ScenarioGraph
+              tree={liveTree || form.tree}
+              selectedId={selectedId}
+              selectedOptionId={optionFocus}
+              onSelectNode={openNode}
+              onSelectOption={openOption}
+              onAddNext={addNextFromGraph}
+              onAddOption={addOptionFromGraph}
+            />
           </section>
         ) : null}
 
         {branching && draft && selected ? (
-          <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl">
+          <aside className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {selected.label}</p>
