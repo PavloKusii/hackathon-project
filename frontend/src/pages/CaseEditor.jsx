@@ -245,6 +245,7 @@ function mergeDraft(node, draft) {
 function firstGap(node) {
   if (!node) return null;
   if ((node.prompt || "").trim().length < 10) return node;
+  if ((node.options || []).length < 2) return node;
   const untitled = (node.options || []).find((option) => (option.title || "").trim().length < 2);
   if (untitled) return node;
   for (const option of node.options || []) {
@@ -254,24 +255,39 @@ function firstGap(node) {
   return null;
 }
 
-export default function CaseEditor({ initial, role, pending, error, onSave, onCancel }) {
+export default function CaseEditor({ initial, role, pending, error, success, draftCases = [], onSave, onSaveDraft, onDeleteDraft, onContinueDraft, onDirtyChange, onCancel }) {
   const [form, setForm] = useState(() => fromCase(initial, role === "superadmin" && !initial?.tree));
   const [selectedId, setSelectedId] = useState("");
   const [optionFocus, setOptionFocus] = useState("");
   const [draft, setDraft] = useState(null);
   const [graphNote, setGraphNote] = useState("");
   const [localError, setLocalError] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [deletingDraftId, setDeletingDraftId] = useState("");
   const selected = form.tree && selectedId ? findNode(form.tree, selectedId) : null;
   const liveTree = form.tree && draft && selected ? replaceNode(form.tree, selected.id, mergeDraft(selected, draft)) : form.tree;
   const payload = useMemo(() => toPayload({ ...form, tree: liveTree }), [form, liveTree]);
   const builtin = initial?.source === "builtin";
   const branching = form.mode === "tree" || form.mode === "graph";
 
+  function markDirty() {
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
+
+  function updateDraft(nextDraft) {
+    markDirty();
+    setDraft(nextDraft);
+  }
+
   function patch(partial) {
+    markDirty();
     setForm((current) => ({ ...current, ...partial }));
   }
 
   function patchStep(index, partial) {
+    markDirty();
     setForm((current) => ({
       ...current,
       steps: current.steps.map((step, stepIndex) => (stepIndex === index ? { ...step, ...partial } : step))
@@ -319,6 +335,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
   }
 
   function changeDraft(nextDraft, note) {
+    markDirty();
     setDraft(nextDraft);
     setGraphNote(note);
     setLocalError("");
@@ -358,6 +375,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     const optionIndex = node?.options?.findIndex((option) => option.id === optionId) ?? -1;
     const option = node?.options?.[optionIndex];
     if (!node || !option || option.next) return;
+    markDirty();
     const updatedNode = {
       ...node,
       options: node.options.map((item, index) => (
@@ -378,6 +396,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     const tree = storedTree();
     const node = findNode(tree, nodeId);
     if (!node) return;
+    markDirty();
     const updatedNode = {
       ...node,
       options: [...(node.options || []), createOption()]
@@ -402,6 +421,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
 
   function removeQuestion() {
     if (!selected) return;
+    markDirty();
     let nextTree;
     if (selected.id === form.tree?.id) {
       const children = [...new Map(
@@ -457,6 +477,37 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     onSave(toPayload({ ...form, tree }));
   }
 
+  async function saveDraft() {
+    setLocalError("");
+    const tree = storedTree();
+    const saved = await onSaveDraft(toPayload({ ...form, tree }));
+    if (saved) {
+      setDirty(false);
+      onDirtyChange?.(false);
+    }
+  }
+
+  function continueDraft(item) {
+    if (dirty && !window.confirm("Поточні незбережені зміни буде втрачено. Відкрити вибрану чернетку?")) return;
+    setDirty(false);
+    setShowDrafts(false);
+    onDirtyChange?.(false);
+    onContinueDraft(item);
+  }
+
+  async function deleteDraft(item) {
+    if (!window.confirm("Видалити цю чернетку? Цю дію не можна скасувати.")) return;
+    setLocalError("");
+    setDeletingDraftId(item.id);
+    try {
+      await onDeleteDraft(item);
+    } catch (deleteError) {
+      setLocalError(`Не вдалося видалити чернетку: ${deleteError.message}`);
+    } finally {
+      setDeletingDraftId("");
+    }
+  }
+
   return (
     <section className="mx-auto w-full border border-zinc-800 bg-zinc-900/30 p-3 sm:p-5 lg:p-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -466,6 +517,36 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         </div>
         <button type="button" onClick={onCancel} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Назад</button>
       </div>
+      {role === "organizer" ? (
+        <div className="mt-4">
+          <button type="button" onClick={() => setShowDrafts((value) => !value)} className="border border-zinc-700 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-olive-200 hover:border-olive-500">
+            {showDrafts ? "Повернутися до конструктора" : `Незавершені кейси (${draftCases.length})`}
+          </button>
+          {showDrafts ? (
+            <section className="mt-4 border border-zinc-800 bg-zinc-950/70 p-4">
+              <h2 className="font-display text-2xl text-zinc-50">Мої незавершені кейси</h2>
+              {draftCases.length ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {draftCases.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 border border-zinc-800 p-3">
+                      <button type="button" onClick={() => continueDraft(item)} className="flex min-w-0 flex-1 items-center justify-between gap-4 p-1 text-left hover:text-olive-200">
+                        <span className="min-w-0">
+                          <span className="block truncate font-display text-xl text-zinc-100">{item.title || "Чернетка без назви"}</span>
+                          <span className="mt-1 block truncate text-sm text-zinc-400">{item.field || "Тему ще не вказано"} · оновлено {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("uk-UA") : "щойно"}</span>
+                        </span>
+                        <span className="shrink-0 border border-olive-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-olive-200">Продовжити</span>
+                      </button>
+                      <button type="button" disabled={Boolean(deletingDraftId)} onClick={() => deleteDraft(item)} className="shrink-0 border border-red-900 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-red-300 hover:border-red-600 disabled:opacity-50">
+                        {deletingDraftId === item.id ? "Видаляємо…" : "Видалити"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-3 text-sm text-zinc-400">Збережених незавершених кейсів поки немає.</p>}
+            </section>
+          ) : null}
+        </div>
+      ) : null}
       <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">
         {branching
           ? "Новий кейс одразу починається з питання 1 і двох варіантів, А та Б. Клік по питанню або варіанту відкриває форму редагування; бали можна змінювати кнопками «+» і «−», а наступне питання — окремим переходом."
@@ -580,7 +661,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                   return (
                     <>
                       <label className="block text-sm text-zinc-300">Текст питання
-                        <textarea value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
+                        <textarea value={draft.prompt} onChange={(event) => updateDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
                       </label>
                       <div className="mt-5 flex items-center justify-between gap-3">
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіанти відповіді</p>
@@ -605,7 +686,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіант {optionLetter(focusIndex)}</p>
                         <button type="button" onClick={() => removeOption(focusIndex)} disabled={draft.options.length <= 1} className="border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-40">− Видалити</button>
                       </div>
-                      <OptionFields option={option} onChange={(partial) => setDraft({
+                      <OptionFields option={option} onChange={(partial) => updateDraft({
                         ...draft,
                         options: draft.options.map((item, optionIndex) => (optionIndex === focusIndex ? { ...item, ...partial } : item))
                       })} />
@@ -661,9 +742,15 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         ) : null}
 
         <p className="min-h-5 text-sm text-amber-400">{localError || error}</p>
+        {success ? <p className="text-sm text-olive-300" role="status">{success}</p> : null}
         <button type="submit" disabled={pending || (branching && !form.tree)} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 disabled:opacity-50">
           {pending ? "Зберігаємо" : "Зберегти кейс"}
         </button>
+        {role === "organizer" ? (
+          <button type="button" disabled={pending} onClick={saveDraft} className="border border-zinc-600 px-5 py-3 font-display text-xl tracking-[0.06em] text-zinc-200 disabled:opacity-50">
+            {pending ? "Зберігаємо…" : "Зберегти чернетку / незавершений кейс"}
+          </button>
+        ) : null}
       </form>
     </section>
   );

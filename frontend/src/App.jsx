@@ -1,7 +1,7 @@
 import { Component, useCallback, useEffect, useRef, useState } from "react";
 import { fetchScenarios } from "./services/scenarioService";
 import { authRequest, clearSession, readSession, saveSession } from "./services/authService";
-import { createCase, deleteCase, loadAttempts, loadManage, loadModeration, loadSessions, moderateCase, saveAttempt, updateCase } from "./services/caseService";
+import { createCase, deleteCase, deleteCaseDraft, loadAttempts, loadManage, loadModeration, loadSessions, moderateCase, saveAttempt, saveCaseDraft, updateCase } from "./services/caseService";
 import { freshScores } from "./scores";
 import Header from "./components/Header";
 import Dashboard from "./pages/Dashboard";
@@ -74,11 +74,13 @@ export default function App() {
   const [authPending, setAuthPending] = useState(false);
   const [editing, setEditing] = useState(null);
   const [formError, setFormError] = useState("");
+  const [formSuccess, setFormSuccess] = useState("");
   const [formPending, setFormPending] = useState(false);
   const [moderationNote, setModerationNote] = useState("");
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [stored, setStored] = useState(false);
   const soloKey = useRef("");
+  const caseFormDirty = useRef(false);
   const role = session?.user?.role || "guest";
   const organizer = role === "organizer";
   const admin = role === "superadmin";
@@ -170,9 +172,15 @@ export default function App() {
     refreshPrivate(session);
   }, [session, refreshPrivate]);
 
-  function openScreen(next) {
+  function openScreen(next, { skipCaseWarning = false } = {}) {
+    if (screen === "caseForm" && next !== "caseForm" && !skipCaseWarning && caseFormDirty.current) {
+      if (!window.confirm("Є незбережені зміни кейсу, і вони будуть втрачені. Ви справді хочете вийти? Скасуйте, щоб спершу зберегти чернетку.")) {
+        return false;
+      }
+      caseFormDirty.current = false;
+    }
     if (screen === "simulation" && next !== "simulation" && next !== "debrief" && !window.confirm("Прогрес проходження тесту буде втрачено. Ви справді хочете вийти?")) {
-      return;
+      return false;
     }
     if (next !== "participant") {
       const url = new URL(window.location.href);
@@ -183,10 +191,10 @@ export default function App() {
     }
     setScreen(next);
     window.scrollTo(0, 0);
+    return true;
   }
 
   function guard(next) {
-    if (next === "caseForm") setEditing(null);
     if ((next === "facilitator" || next === "caseForm") && !organizer) {
       openScreen(role === "guest" ? "login" : "dashboard");
       return;
@@ -203,13 +211,33 @@ export default function App() {
       openScreen("login");
       return;
     }
-    openScreen(next);
+    if (next === "caseForm" && screen === "caseForm" && caseFormDirty.current) {
+      if (!window.confirm("Є незбережені зміни кейсу. Створення нового кейсу відкине їх. Продовжити?")) return;
+      caseFormDirty.current = false;
+    }
+    if (openScreen(next) && next === "caseForm") {
+      setEditing(null);
+      setFormError("");
+      setFormSuccess("");
+      caseFormDirty.current = false;
+    }
   }
+
+  useEffect(() => {
+    if (screen !== "caseForm") return undefined;
+    const warnBeforeUnload = (event) => {
+      if (!caseFormDirty.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [screen]);
 
   function playable() {
     const map = new Map(scenarios.map((item) => [item.id, item]));
     managed.forEach((item) => {
-      if (item.source !== "builtin") map.set(item.id, item);
+      if (item.source !== "builtin" && item.status !== "draft") map.set(item.id, item);
     });
     return [...map.values()];
   }
@@ -247,9 +275,9 @@ export default function App() {
   }
 
   function logout() {
+    if (!openScreen("dashboard")) return;
     clearSession();
     setSession(null);
-    openScreen("dashboard");
   }
 
   useEffect(() => {
@@ -295,14 +323,36 @@ export default function App() {
     if (!session?.token) return;
     setFormPending(true);
     setFormError("");
+    setFormSuccess("");
     try {
       if (editing?.id) await updateCase(session.token, editing.id, payload);
       else await createCase(session.token, payload);
       await loadScenarios();
       await refreshPrivate(session);
-      openScreen(role === "superadmin" ? "moderation" : "cases");
+      caseFormDirty.current = false;
+      openScreen(role === "superadmin" ? "moderation" : "cases", { skipCaseWarning: true });
     } catch (error) {
       setFormError(error.message);
+    } finally {
+      setFormPending(false);
+    }
+  }
+
+  async function saveDraft(payload) {
+    if (!session?.token || role !== "organizer") return false;
+    setFormPending(true);
+    setFormError("");
+    setFormSuccess("");
+    try {
+      const result = await saveCaseDraft(session.token, editing?.id, payload);
+      setEditing(result.case);
+      caseFormDirty.current = false;
+      setFormSuccess("Чернетку збережено.");
+      await refreshPrivate(session);
+      return true;
+    } catch (error) {
+      setFormError(error.message);
+      return false;
     } finally {
       setFormPending(false);
     }
@@ -320,6 +370,18 @@ export default function App() {
     }
   }
 
+  async function removeDraft(item) {
+    if (!session?.token || role !== "organizer") throw new Error("Чернетку може видалити лише організатор.");
+    await deleteCaseDraft(session.token, item.id);
+    if (editing?.id === item.id) {
+      setEditing(null);
+      setFormError("");
+      setFormSuccess("");
+      caseFormDirty.current = false;
+    }
+    await refreshPrivate(session);
+  }
+
   async function decide(id, status) {
     setModerationNote("");
     try {
@@ -333,7 +395,8 @@ export default function App() {
   }
 
   const scenario = playable().find((item) => item.id === scenarioId) || null;
-  const localCases = managed.filter((item) => item.source === "custom" && (role !== "superadmin" || item.ownerId === session?.user?.id));
+  const localCases = managed.filter((item) => item.source === "custom" && item.status !== "draft" && (role !== "superadmin" || item.ownerId === session?.user?.id));
+  const draftCases = managed.filter((item) => item.source === "custom" && item.status === "draft" && (role !== "superadmin" || item.ownerId === session?.user?.id));
   const hostScenarios = organizer || admin ? playable() : scenarios;
 
   return (
@@ -345,7 +408,13 @@ export default function App() {
           <CaseSelector
             scenarios={scenarios}
             localCases={role === "guest" ? [] : localCases}
-            onEdit={organizer ? (item) => { setEditing(item); setFormError(""); openScreen("caseForm"); } : null}
+            onEdit={organizer ? (item) => {
+              if (!openScreen("caseForm")) return;
+              caseFormDirty.current = false;
+              setEditing(item);
+              setFormError("");
+              setFormSuccess("");
+            } : null}
             onDelete={organizer ? removeCase : null}
             loading={loading}
             loadError={loadError}
@@ -414,14 +483,34 @@ export default function App() {
           />
         )}
         {screen === "caseForm" && (organizer || (admin && editing)) && (
-          <CaseEditor initial={editing} role={role} pending={formPending} error={formError} onCancel={() => openScreen("dashboard")} onSave={saveCase} />
+          <CaseEditor
+            key={editing?.id || "new-case"}
+            initial={editing}
+            role={role}
+            pending={formPending}
+            error={formError}
+            success={formSuccess}
+            draftCases={draftCases}
+            onCancel={() => openScreen("dashboard")}
+            onSave={saveCase}
+            onSaveDraft={saveDraft}
+            onDeleteDraft={removeDraft}
+            onContinueDraft={(item) => { setEditing(item); setFormError(""); setFormSuccess(""); caseFormDirty.current = false; }}
+            onDirtyChange={(dirty) => { caseFormDirty.current = dirty; if (dirty) setFormSuccess(""); }}
+          />
         )}
         {screen === "moderation" && role === "superadmin" && (
           <Moderation
             cases={[...queue, ...managed.filter((item) => item.source === "builtin")]}
             note={moderationNote}
             onBack={() => openScreen("dashboard")}
-            onEdit={(item) => { setEditing(item); setFormError(""); openScreen("caseForm"); }}
+            onEdit={(item) => {
+              if (!openScreen("caseForm")) return;
+              caseFormDirty.current = false;
+              setEditing(item);
+              setFormError("");
+              setFormSuccess("");
+            }}
             onDecide={decide}
           />
         )}

@@ -144,6 +144,92 @@ export function validateCase(body) {
   return { title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
 }
 
+function normalizeDraftCase(body) {
+  const timeMode = body?.timeMode === "case" || body?.timeMode === "step" ? body.timeMode : "none";
+  const timeLimitSeconds = timeMode === "none" ? 0 : limitSeconds(body?.timeLimitSeconds);
+  const shared = {
+    title: text(body?.title, 160),
+    field: text(body?.field, 80),
+    summary: text(body?.summary, 600),
+    visibility: "local",
+    norms: normalizeNorms(body),
+    timeMode,
+    timeLimitSeconds
+  };
+  if (body?.tree) {
+    const tree = normalizeDraftNode(body.tree, "1", 1) || {
+      id: "draft-1",
+      label: "1",
+      prompt: "",
+      options: []
+    };
+    return {
+      ...shared,
+      branching: true,
+      depth: treeDepth(tree),
+      optionCount: tree.options.length,
+      tree,
+      steps: flattenTree(tree)
+    };
+  }
+  const steps = (Array.isArray(body?.steps) ? body.steps : []).slice(0, 200).map((step, index) => {
+    const source = step && typeof step === "object" ? step : {};
+    return {
+      id: text(source.id, 40) || `step-${index + 1}`,
+      prompt: text(source.prompt, 2000),
+      options: (Array.isArray(source.options) ? source.options : []).slice(0, 100)
+        .map(normalizeDraftOption)
+    };
+  });
+  return { ...shared, branching: false, steps };
+}
+
+function normalizeDraftNode(node, label, level) {
+  if (!node || typeof node !== "object" || level > 100) return null;
+  const rawOptions = (Array.isArray(node.options) ? node.options : []).slice(0, 100);
+  return {
+    id: text(node.id, 40) || `draft-${label}`,
+    label: text(node.label, 64) || label,
+    prompt: text(node.prompt, 2000),
+    options: rawOptions.map((option, index) => {
+      return {
+        ...normalizeDraftOption(option),
+        next: option?.next ? normalizeDraftNode(option.next, `${label}-${index + 1}`, level + 1) : null
+      };
+    })
+  };
+}
+
+function normalizeDraftOption(option, index = 0) {
+  const source = option && typeof option === "object" ? option : {};
+  const numericDelta = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(-40, Math.min(0, Math.round(number))) : 0;
+  };
+  const deltaSource = source.deltas && typeof source.deltas === "object" ? source.deltas : {};
+  const badges = Array.isArray(source.badges) ? source.badges : String(source.badges || "").split(",");
+  const legalRefs = Array.isArray(source.legalRefs) ? source.legalRefs : [];
+  const legalTitle = text(source.legalTitle || legalRefs[0]?.title, 160);
+  const legalHref = text(source.legalHref || legalRefs[0]?.href, 300);
+  return {
+    id: text(source.id, 32) || `option-${index + 1}`,
+    title: text(source.title, 160),
+    text: text(source.text, 800),
+    badges: badges.map((badge) => text(badge, 40)).filter(Boolean).slice(0, 4),
+    deltas: {
+      integrity: numericDelta(deltaSource.integrity ?? source.integrity),
+      trust: numericDelta(deltaSource.trust ?? source.trust),
+      effectiveness: numericDelta(deltaSource.effectiveness ?? source.effectiveness)
+    },
+    analysis: text(source.analysis, 2000),
+    deferred: text(source.deferred, 2000),
+    legal: text(source.legal, 2000),
+    legalRefs: legalTitle ? [{ title: legalTitle, href: legalHref }] : [],
+    nextStepId: text(source.nextStepId, 40),
+    end: source.end === true
+  };
+}
+
 export function scenarioTimer(scenario) {
   const requested = scenario?.timeMode;
   const mode = requested === "case" || requested === "step"
@@ -370,6 +456,85 @@ export function attachCaseRoutes(app, hooks = {}) {
     if (hooks.onChange) await hooks.onChange();
   }
 
+  app.post("/api/cases/drafts", async (req, res) => {
+    try {
+      const user = await userFromRequest(req);
+      if (!user || user.role !== "organizer") {
+        res.status(403).json({ message: "Чернетки кейсів зберігає організатор." });
+        return;
+      }
+      const input = normalizeDraftCase(req.body);
+      const now = new Date().toISOString();
+      const created = {
+        id: `case-${crypto.randomBytes(6).toString("hex")}`,
+        ...input,
+        source: "custom",
+        status: "draft",
+        ownerId: user.id,
+        ownerEmail: user.email,
+        createdAt: now,
+        updatedAt: now,
+        reviewNote: ""
+      };
+      await enqueue(async () => {
+        const catalog = await loadCatalog();
+        const cases = await readCases();
+        const usedCodes = new Set(catalog.all.map((item) => String(item.code || "").toUpperCase()).filter(Boolean));
+        let sequence = catalog.all.reduce((maximum, item) => {
+          const match = /^EG-(\d+)$/i.exec(String(item.code || ""));
+          return match ? Math.max(maximum, Number(match[1])) : maximum;
+        }, 0) + 1;
+        let code = `EG-${String(sequence).padStart(2, "0")}`;
+        while (usedCodes.has(code)) {
+          sequence += 1;
+          code = `EG-${String(sequence).padStart(2, "0")}`;
+        }
+        created.code = code;
+        cases.push(created);
+        await writeJson(casesFile, { cases });
+      });
+      await changed();
+      res.status(201).json({ case: created });
+    } catch (error) {
+      console.error("Failed to save case draft:", error);
+      res.status(error.status || 500).json({ message: error.message || "Не вдалося зберегти чернетку." });
+    }
+  });
+
+  app.put("/api/cases/:id/draft", async (req, res) => {
+    try {
+      const user = await userFromRequest(req);
+      if (!user || user.role !== "organizer") {
+        res.status(403).json({ message: "Чернетки кейсів зберігає організатор." });
+        return;
+      }
+      const input = normalizeDraftCase(req.body);
+      const catalog = await loadCatalog();
+      const current = catalog.byId.get(req.params.id);
+      if (!current || current.source !== "custom" || current.ownerId !== user.id) {
+        res.status(404).json({ message: "Чернетку не знайдено." });
+        return;
+      }
+      const updated = await enqueue(async () => {
+        const cases = await readCases();
+        const target = cases.find((item) => item.id === current.id && item.ownerId === user.id);
+        if (!target) throw fail(404, "Чернетку не знайдено.");
+        Object.assign(target, input, {
+          status: "draft",
+          visibility: "local",
+          updatedAt: new Date().toISOString()
+        });
+        await writeJson(casesFile, { cases });
+        return target;
+      });
+      await changed();
+      res.json({ case: updated });
+    } catch (error) {
+      console.error("Failed to update case draft:", error);
+      res.status(error.status || 500).json({ message: error.message || "Не вдалося оновити чернетку." });
+    }
+  });
+
   app.get("/api/cases/manage", async (req, res) => {
     const user = await userFromRequest(req);
     if (!user || (user.role !== "organizer" && user.role !== "superadmin")) {
@@ -405,9 +570,10 @@ export function attachCaseRoutes(app, hooks = {}) {
       return;
     }
     try {
-      const input = validateCase(req.body);
+      const isDraft = req.body?.draft === true;
+      const input = isDraft ? normalizeDraftCase(req.body) : validateCase(req.body);
       const now = new Date().toISOString();
-      const status = input.visibility === "public" ? "pending" : "local";
+      const status = isDraft ? "draft" : input.visibility === "public" ? "pending" : "local";
       const created = {
         id: `case-${crypto.randomBytes(6).toString("hex")}`,
         ...input,
@@ -450,7 +616,8 @@ export function attachCaseRoutes(app, hooks = {}) {
       return;
     }
     try {
-      const input = validateCase(req.body);
+      const isDraft = req.body?.draft === true;
+      const input = isDraft ? normalizeDraftCase(req.body) : validateCase(req.body);
       const catalog = await loadCatalog();
       const current = catalog.byId.get(req.params.id);
       if (!current) {
@@ -466,6 +633,7 @@ export function attachCaseRoutes(app, hooks = {}) {
         return;
       }
       if (current.source === "builtin") {
+        if (isDraft) throw fail(400, "Вбудований кейс не можна зберегти як чернетку.");
         const override = { ...input, visibility: "public" };
         await enqueue(async () => {
           const overrides = await readJson(overridesFile, {});
@@ -491,8 +659,10 @@ export function attachCaseRoutes(app, hooks = {}) {
         target.branching = Boolean(input.branching);
         target.depth = input.depth || 0;
         target.optionCount = input.optionCount || 0;
-        target.visibility = input.visibility;
-        if (user.role === "superadmin") {
+        target.visibility = isDraft ? "local" : input.visibility;
+        if (isDraft) {
+          target.status = "draft";
+        } else if (user.role === "superadmin") {
           target.status = input.visibility === "local"
             ? "local"
             : (req.body?.status === "published" || req.body?.status === "rejected" || req.body?.status === "pending" ? req.body.status : target.status);
@@ -536,6 +706,33 @@ export function attachCaseRoutes(app, hooks = {}) {
       res.json({ deleted: true });
     } catch (error) {
       res.status(error.status || 500).json({ message: error.message || "Не вдалося видалити кейс." });
+    }
+  });
+
+  app.delete("/api/cases/:id/draft", async (req, res) => {
+    try {
+      const user = await userFromRequest(req);
+      if (!user || user.role !== "organizer") {
+        res.status(403).json({ message: "Чернетки може видаляти лише організатор-власник." });
+        return;
+      }
+      const catalog = await loadCatalog();
+      const current = catalog.byId.get(req.params.id);
+      if (!current || current.status !== "draft" || current.source !== "custom" || current.ownerId !== user.id) {
+        res.status(404).json({ message: "Чернетку не знайдено." });
+        return;
+      }
+      await enqueue(async () => {
+        const cases = await readCases();
+        const target = cases.find((item) => item.id === req.params.id && item.ownerId === user.id && item.status === "draft");
+        if (!target) throw fail(404, "Чернетку не знайдено.");
+        await writeJson(casesFile, { cases: cases.filter((item) => item !== target) });
+      });
+      await changed();
+      res.json({ deleted: true });
+    } catch (error) {
+      console.error("Failed to delete case draft:", error);
+      res.status(error.status || 500).json({ message: error.message || "Не вдалося видалити чернетку." });
     }
   });
 
