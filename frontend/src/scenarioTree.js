@@ -134,9 +134,9 @@ export function formTreeFromApi(node) {
       legal: option.legal || "",
       legalTitle: option.legalRefs?.[0]?.title || option.legalTitle || "",
       legalHref: option.legalRefs?.[0]?.href || option.legalHref || "",
-      integrity: option.deltas?.integrity || 0,
-      trust: option.deltas?.trust || 0,
-      effectiveness: option.deltas?.effectiveness || 0,
+      integrity: Math.min(0, Number(option.deltas?.integrity) || 0),
+      trust: Math.min(0, Number(option.deltas?.trust) || 0),
+      effectiveness: Math.min(0, Number(option.deltas?.effectiveness) || 0),
       next: formTreeFromApi(option.next)
     }))
   };
@@ -159,9 +159,9 @@ export function apiTreeFromForm(node) {
       legalTitle: option.legalTitle,
       legalHref: option.legalHref,
       deltas: {
-        integrity: Number(option.integrity) || 0,
-        trust: Number(option.trust) || 0,
-        effectiveness: Number(option.effectiveness) || 0
+        integrity: Math.min(0, Number(option.integrity) || 0),
+        trust: Math.min(0, Number(option.trust) || 0),
+        effectiveness: Math.min(0, Number(option.effectiveness) || 0)
       },
       next: apiTreeFromForm(option.next)
     }))

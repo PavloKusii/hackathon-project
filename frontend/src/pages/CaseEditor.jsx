@@ -17,7 +17,6 @@ function fromCase(item) {
     : (Number(item?.timeLimitSeconds) > 0 ? "case" : "none");
   const limit = partsFromSeconds(inherited === "none" ? 0 : item?.timeLimitSeconds);
   const shared = {
-    code: item?.code || "",
     title: item?.title || "",
     field: item?.field || "",
     summary: item?.summary || "",
@@ -47,9 +46,9 @@ function fromCase(item) {
         legal: option.legal || "",
         legalTitle: option.legalRefs?.[0]?.title || "",
         legalHref: option.legalRefs?.[0]?.href || "",
-        integrity: option.deltas?.integrity || 0,
-        trust: option.deltas?.trust || 0,
-        effectiveness: option.deltas?.effectiveness || 0
+        integrity: Math.min(0, Number(option.deltas?.integrity) || 0),
+        trust: Math.min(0, Number(option.deltas?.trust) || 0),
+        effectiveness: Math.min(0, Number(option.deltas?.effectiveness) || 0)
       }))
     }))
   };
@@ -77,9 +76,9 @@ function linearSteps(steps) {
       legalTitle: option.legalTitle,
       legalHref: option.legalHref,
       deltas: {
-        integrity: Number(option.integrity) || 0,
-        trust: Number(option.trust) || 0,
-        effectiveness: Number(option.effectiveness) || 0
+        integrity: Math.min(0, Number(option.integrity) || 0),
+        trust: Math.min(0, Number(option.trust) || 0),
+        effectiveness: Math.min(0, Number(option.effectiveness) || 0)
       }
     }))
   }));
@@ -87,7 +86,6 @@ function linearSteps(steps) {
 
 function toPayload(form) {
   const shared = {
-    code: form.code,
     title: form.title,
     field: form.field,
     summary: form.summary,
@@ -126,14 +124,13 @@ function OptionFields({ option, onChange }) {
       </label>
       {["integrity", "trust", "effectiveness"].map((key) => {
         const label = key === "integrity" ? "Доброчесність" : key === "trust" ? "Довіра" : "Ефективність";
-        const value = Number(option[key]) || 0;
+        const value = Math.max(-40, Math.min(0, Number(option[key]) || 0));
         return (
           <fieldset key={key} className="border border-zinc-800 p-3 text-sm text-zinc-300">
             <legend>{label}</legend>
             <div className="mt-2 flex items-center gap-2">
-              <button type="button" onClick={() => onChange({ [key]: Math.max(-40, value - 1) })} className="h-10 w-10 border border-zinc-700 text-xl text-zinc-200">−</button>
-              <input type="number" min="-40" max="40" value={value} onChange={(event) => onChange({ [key]: Math.max(-40, Math.min(40, Number(event.target.value) || 0)) })} className="h-10 w-20 border border-zinc-700 bg-zinc-950 text-center text-zinc-100" />
-              <button type="button" onClick={() => onChange({ [key]: Math.min(40, value + 1) })} className="h-10 w-10 border border-olive-700 text-xl text-olive-200">+</button>
+              <button type="button" aria-label={`Зменшити ${label}`} onClick={() => onChange({ [key]: Math.max(-40, value - 1) })} className="h-10 w-10 border border-zinc-700 text-xl text-zinc-200">−</button>
+              <input type="number" min="-40" max="0" value={value} onChange={(event) => onChange({ [key]: Math.max(-40, Math.min(0, Number(event.target.value) || 0)) })} className="h-10 w-20 border border-zinc-700 bg-zinc-950 text-center text-zinc-100" />
             </div>
           </fieldset>
         );
@@ -374,9 +371,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={saveCase}>
         <div className="grid gap-4 border border-zinc-800 bg-zinc-900/80 p-5 md:grid-cols-2">
-          <label className="text-sm text-zinc-300">Код
-            <input value={form.code} onChange={(event) => patch({ code: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" placeholder="EG-12" />
-          </label>
           <label className="text-sm text-zinc-300">Тема
             <input required value={form.field} onChange={(event) => patch({ field: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
@@ -527,7 +521,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                         )}
                       </div>
                     </div>
-                    <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до +40. Підсумок учасника лишається в межах 0–100.</p>
+                    <p className="mt-4 text-xs leading-5 text-zinc-500">Доброчесність, довіра й ефективність тут — зміна шкали від −40 до 0. Підсумок учасника лишається в межах 0–100.</p>
                   </>
                 );
               })()}
@@ -564,10 +558,6 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
           <button type="button" onClick={() => patch({ steps: [...form.steps, blankStep()] })} className="border border-zinc-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-300">Додати крок</button>
         ) : null}
 
-        <details className="border border-zinc-800 bg-zinc-950 p-4">
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-olive-300">Структура кейса</summary>
-          <pre className="mt-3 overflow-auto text-xs leading-5 text-zinc-400">{JSON.stringify(payload, null, 2)}</pre>
-        </details>
         <p className="min-h-5 text-sm text-amber-400">{localError || error}</p>
         <button type="submit" disabled={pending || (branching && !form.tree)} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 disabled:opacity-50">
           {pending ? "Зберігаємо" : "Зберегти кейс"}

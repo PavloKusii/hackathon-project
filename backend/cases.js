@@ -52,15 +52,55 @@ function text(value, max) {
   return String(value || "").trim().slice(0, max);
 }
 
-function slug(value) {
-  return text(value, 24).toUpperCase().replace(/[^A-Z0-9А-ЯІЇЄҐ._-]/gi, "").slice(0, 16);
+function normalizeCaseDeltas(value) {
+  let changed = false;
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      changed = normalizeCaseDeltas(item) || changed;
+    });
+    return changed;
+  }
+  if (!value || typeof value !== "object") return false;
+  if (value.deltas && typeof value.deltas === "object" && !Array.isArray(value.deltas)) {
+    METRICS.forEach((key) => {
+      const score = Number(value.deltas[key]);
+      if (Number.isFinite(score) && score > 0) {
+        value.deltas[key] = 0;
+        changed = true;
+      }
+    });
+  }
+  Object.values(value).forEach((item) => {
+    changed = normalizeCaseDeltas(item) || changed;
+  });
+  return changed;
+}
+
+export async function migrateCaseDeltas() {
+  const files = [];
+  try {
+    const scenarioFiles = await fs.readdir(scenariosDir);
+    files.push(...scenarioFiles.filter((file) => file.endsWith(".json")).map((file) => path.join(scenariosDir, file)));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  files.push(casesFile, overridesFile);
+  for (const file of files) {
+    let data;
+    try {
+      data = JSON.parse(await fs.readFile(file, "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (normalizeCaseDeltas(data)) await writeJson(file, data);
+  }
 }
 
 export function validateCase(body) {
   const title = text(body?.title, 160);
   const field = text(body?.field, 80);
   const summary = text(body?.summary, 600);
-  const code = slug(body?.code) || "CASE";
   const visibility = body?.visibility === "public" ? "public" : "local";
   if (title.length < 3) throw fail(400, "Назва кейса має містити щонайменше 3 символи.");
   if (field.length < 2) throw fail(400, "Вкажіть галузь або тему кейса.");
@@ -72,7 +112,6 @@ export function validateCase(body) {
   if (body?.tree) {
     const tree = validateNode(body.tree, "1", 1);
     return {
-      code,
       title,
       field,
       summary,
@@ -90,7 +129,7 @@ export function validateCase(body) {
   const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
   const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
-  return { code, title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
+  return { title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
 }
 
 export function scenarioTimer(scenario) {
@@ -155,10 +194,10 @@ function sanitizeOption(option, optionIndex, where) {
   const deltas = {};
   METRICS.forEach((key) => {
     const number = Number(option?.deltas?.[key] ?? option?.[key] ?? 0);
-    if (!Number.isFinite(number) || number < -40 || number > 40) {
-      throw fail(400, "Зміна шкали має бути числом від -40 до 40.");
+    if (!Number.isFinite(number) || number < -40) {
+      throw fail(400, "Зміна шкали має бути числом від -40 до 0.");
     }
-    deltas[key] = Math.round(number);
+    deltas[key] = Math.min(0, Math.round(number));
   });
   const badges = String(option?.badges || "")
     .split(",")
@@ -245,6 +284,9 @@ export async function loadCatalog() {
     readJson(overridesFile, {}),
     readJson(casesFile, { cases: [] })
   ]);
+  builtins.forEach(normalizeCaseDeltas);
+  normalizeCaseDeltas(overrides);
+  normalizeCaseDeltas(stored);
   const custom = Array.isArray(stored.cases) ? stored.cases : [];
   const official = builtins.map((item) => applyOverride({
     ...item,
@@ -332,6 +374,7 @@ export function attachCaseRoutes(app, hooks = {}) {
       return;
     }
     const cases = await readCases();
+    cases.forEach(normalizeCaseDeltas);
     const queue = cases
       .filter((item) => item.visibility === "public" || item.status === "pending" || item.status === "published" || item.status === "rejected")
       .map(manageView)
@@ -361,7 +404,19 @@ export function attachCaseRoutes(app, hooks = {}) {
         reviewNote: ""
       };
       await enqueue(async () => {
+        const catalog = await loadCatalog();
         const cases = await readCases();
+        const usedCodes = new Set(catalog.all.map((item) => String(item.code || "").toUpperCase()).filter(Boolean));
+        let sequence = catalog.all.reduce((maximum, item) => {
+          const match = /^EG-(\d+)$/i.exec(String(item.code || ""));
+          return match ? Math.max(maximum, Number(match[1])) : maximum;
+        }, 0) + 1;
+        let code = `EG-${String(sequence).padStart(2, "0")}`;
+        while (usedCodes.has(code)) {
+          sequence += 1;
+          code = `EG-${String(sequence).padStart(2, "0")}`;
+        }
+        created.code = code;
         cases.push(created);
         await writeJson(casesFile, { cases });
       });
@@ -409,7 +464,6 @@ export function attachCaseRoutes(app, hooks = {}) {
         const cases = await readCases();
         const target = cases.find((item) => item.id === current.id);
         if (!target) throw fail(404, "Кейс не знайдено.");
-        target.code = input.code;
         target.title = input.title;
         target.field = input.field;
         target.summary = input.summary;
