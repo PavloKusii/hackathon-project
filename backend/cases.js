@@ -126,9 +126,21 @@ export function validateCase(body) {
       steps: flattenTree(tree)
     };
   }
-  const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 8) : [];
+  const rawSteps = Array.isArray(body?.steps) ? body.steps.slice(0, 200) : [];
   if (rawSteps.length < 1) throw fail(400, "Додайте хоча б один крок.");
   const steps = rawSteps.map((step, stepIndex) => validateLinearStep(step, stepIndex));
+  const stepIds = new Set();
+  steps.forEach((step, stepIndex) => {
+    if (stepIds.has(step.id)) throw fail(400, `Крок ${stepIndex + 1}: ідентифікатор питання має бути унікальним.`);
+    stepIds.add(step.id);
+  });
+  steps.forEach((step, stepIndex) => {
+    step.options.forEach((option, optionIndex) => {
+      if (option.nextStepId && !stepIds.has(option.nextStepId)) {
+        throw fail(400, `Крок ${stepIndex + 1}: перехід варіанта ${optionIndex + 1} веде до невідомого питання.`);
+      }
+    });
+  });
   return { title, field, summary, visibility, norms, timeMode, timeLimitSeconds, branching: false, steps };
 }
 
@@ -158,12 +170,16 @@ function normalizeNorms(body) {
 function validateLinearStep(step, stepIndex) {
   const prompt = text(step?.prompt, 2000);
   if (prompt.length < 10) throw fail(400, `Крок ${stepIndex + 1}: опишіть ситуацію докладніше.`);
-  const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 4) : [];
+  const rawOptions = Array.isArray(step?.options) ? step.options.slice(0, 100) : [];
   if (rawOptions.length < 2) throw fail(400, `Крок ${stepIndex + 1}: потрібно щонайменше два варіанти.`);
   return {
     id: text(step?.id, 40) || `step-${stepIndex + 1}`,
     prompt,
-    options: rawOptions.map((option, optionIndex) => sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`))
+    options: rawOptions.map((option, optionIndex) => ({
+      ...sanitizeOption(option, optionIndex, `Крок ${stepIndex + 1}`),
+      nextStepId: text(option?.nextStepId, 40),
+      end: option?.end === true
+    }))
   };
 }
 

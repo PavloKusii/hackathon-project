@@ -9,45 +9,84 @@ const COL = 390;
 const PAD = 28;
 
 function nodeHeight(node) {
-  return HEADER_H + Math.max(1, node.options?.length || 0) * OPTION_H + ADD_OPTION_H;
+  const optionCount = Array.isArray(node?.options) ? node.options.length : 0;
+  return HEADER_H + Math.max(1, optionCount) * OPTION_H + ADD_OPTION_H;
 }
 
-function subtreeHeight(node) {
-  const children = (node.options || []).map((option) => option.next).filter(Boolean);
-  if (!children.length) return nodeHeight(node);
-  const childrenHeight = children.reduce((sum, child) => sum + subtreeHeight(child), 0)
-    + NODE_GAP * (children.length - 1);
-  return Math.max(nodeHeight(node), childrenHeight);
-}
-
-function layout(node, depth, top, nodes, edges) {
-  const height = subtreeHeight(node);
-  const cardHeight = nodeHeight(node);
-  const x = PAD + depth * COL;
-  const y = top + (height - cardHeight) / 2;
-  const positioned = { node, x, y, height: cardHeight };
-  nodes.push(positioned);
-
-  const branches = (node.options || [])
-    .map((option, index) => ({ option, index }))
-    .filter(({ option }) => option.next);
-  const childrenHeight = branches.reduce((sum, { option }) => sum + subtreeHeight(option.next), 0)
-    + NODE_GAP * Math.max(0, branches.length - 1);
-  let childTop = top + (height - childrenHeight) / 2;
-
-  branches.forEach(({ option, index }) => {
-    const childHeight = subtreeHeight(option.next);
-    const child = layout(option.next, depth + 1, childTop, nodes, edges);
-    edges.push({
-      from: positioned,
-      to: child,
-      index,
-      letter: LETTERS[index] || String(index + 1),
-      optionId: option.id
+function layout(root) {
+  const graphNodes = [];
+  const graphEdges = [];
+  const byId = new Map();
+  function collect(node) {
+    if (!node || typeof node !== "object" || typeof node.id !== "string" || !node.id || byId.has(node.id)) return;
+    byId.set(node.id, node);
+    graphNodes.push(node);
+    (Array.isArray(node.options) ? node.options : []).forEach((option, index) => {
+      if (!option || typeof option !== "object" || !option.next) return;
+      graphEdges.push({ fromId: node.id, toId: option.next.id, option, index });
+      collect(option.next);
     });
-    childTop += childHeight + NODE_GAP;
+  }
+  collect(root);
+  if (!graphNodes.length) return { nodes: [], edges: [] };
+
+  const indegree = new Map(graphNodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(graphNodes.map((node) => [node.id, []]));
+  graphEdges.forEach((edge) => {
+    if (!indegree.has(edge.toId)) return;
+    indegree.set(edge.toId, (indegree.get(edge.toId) || 0) + 1);
+    outgoing.get(edge.fromId)?.push(edge);
   });
-  return positioned;
+  const ready = graphNodes.filter((node) => indegree.get(node.id) === 0);
+  const depth = new Map([[root.id, 0]]);
+  const ordered = [];
+  while (ready.length) {
+    const node = ready.shift();
+    ordered.push(node);
+    (outgoing.get(node.id) || []).forEach((edge) => {
+      depth.set(edge.toId, Math.max(depth.get(edge.toId) || 0, (depth.get(node.id) || 0) + 1));
+      indegree.set(edge.toId, indegree.get(edge.toId) - 1);
+      if (indegree.get(edge.toId) === 0) ready.push(byId.get(edge.toId));
+    });
+  }
+  if (ordered.length < graphNodes.length) {
+    const level = Math.max(0, ...depth.values()) + 1;
+    graphNodes.forEach((node) => {
+      if (ordered.includes(node)) return;
+      depth.set(node.id, level);
+      ordered.push(node);
+    });
+  }
+
+  const columns = new Map();
+  ordered.forEach((node) => {
+    const level = depth.get(node.id) || 0;
+    if (!columns.has(level)) columns.set(level, []);
+    columns.get(level).push(node);
+  });
+  const positionedById = new Map();
+  [...columns.entries()].forEach(([level, nodes]) => {
+    let top = PAD;
+    nodes.forEach((node) => {
+      const positioned = {
+        node,
+        x: PAD + level * COL,
+        y: top,
+        height: nodeHeight(node)
+      };
+      positionedById.set(node.id, positioned);
+      top += positioned.height + NODE_GAP;
+    });
+  });
+  const nodes = ordered.map((node) => positionedById.get(node.id));
+  const edges = graphEdges.map((edge) => ({
+    ...edge,
+    from: positionedById.get(edge.fromId),
+    to: positionedById.get(edge.toId),
+    letter: LETTERS[edge.index] || String(edge.index + 1),
+    optionId: edge.option.id
+  })).filter((edge) => edge.from && edge.to);
+  return { nodes, edges };
 }
 
 export default function ScenarioGraph({
@@ -59,11 +98,9 @@ export default function ScenarioGraph({
   onAddNext,
   onAddOption
 }) {
-  const nodes = [];
-  const edges = [];
-  layout(tree, 0, PAD, nodes, edges);
-  const width = Math.max(...nodes.map((item) => item.x + NODE_W)) + PAD;
-  const height = Math.max(...nodes.map((item) => item.y + item.height)) + PAD;
+  const { nodes, edges } = layout(tree);
+  const width = Math.max(420, ...nodes.map((item) => item.x + NODE_W + PAD));
+  const height = Math.max(420, ...nodes.map((item) => item.y + item.height + PAD));
 
   return (
     <div className="overflow-auto border border-zinc-800 bg-zinc-950/80" style={{ minHeight: 420 }}>
@@ -106,6 +143,7 @@ export default function ScenarioGraph({
         </svg>
         {nodes.map(({ node, x, y, height: cardHeight }) => {
           const active = node.id === selectedId && !selectedOptionId;
+          const options = Array.isArray(node.options) ? node.options : [];
           return (
             <article
               key={node.id}
@@ -122,7 +160,10 @@ export default function ScenarioGraph({
                   {(node.prompt || "").trim() || "Натисніть, щоб додати текст питання"}
                 </span>
               </button>
-              {(node.options || []).map((option, index) => {
+              {options.map((rawOption, index) => {
+                const option = rawOption && typeof rawOption === "object"
+                  ? rawOption
+                  : { id: `option-${index + 1}`, title: "" };
                 const letter = LETTERS[index] || String(index + 1);
                 const selected = node.id === selectedId && option.id === selectedOptionId;
                 return (
