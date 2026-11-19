@@ -1,7 +1,7 @@
 import { Component, useCallback, useEffect, useRef, useState } from "react";
 import { fetchScenarios } from "./services/scenarioService";
 import { authRequest, clearSession, readSession, saveSession } from "./services/authService";
-import { createCase, loadAttempts, loadManage, loadModeration, loadSessions, moderateCase, saveAttempt, updateCase } from "./services/caseService";
+import { createCase, deleteCase, loadAttempts, loadManage, loadModeration, loadSessions, moderateCase, saveAttempt, updateCase } from "./services/caseService";
 import { freshScores } from "./scores";
 import Header from "./components/Header";
 import Dashboard from "./pages/Dashboard";
@@ -171,6 +171,9 @@ export default function App() {
   }, [session, refreshPrivate]);
 
   function openScreen(next) {
+    if (screen === "simulation" && next !== "simulation" && next !== "debrief" && !window.confirm("Прогрес проходження тесту буде втрачено. Ви справді хочете вийти?")) {
+      return;
+    }
     if (next !== "participant") {
       const url = new URL(window.location.href);
       if (url.searchParams.has("room")) {
@@ -303,6 +306,18 @@ export default function App() {
     } finally {
       setFormPending(false);
     }
+
+    async function removeCase(item) {
+      if (!window.confirm(`Видалити кейс «${item.title}»?`)) return;
+      try {
+        await deleteCase(session.token, item.id);
+        await loadScenarios();
+        await refreshPrivate(session);
+      } catch (error) {
+        setFormError(error.message);
+        openScreen("cases");
+      }
+    }
   }
 
   async function decide(id, status) {
@@ -331,6 +346,7 @@ export default function App() {
             scenarios={scenarios}
             localCases={role === "guest" ? [] : localCases}
             onEdit={organizer ? (item) => { setEditing(item); setFormError(""); openScreen("caseForm"); } : null}
+            onDelete={organizer ? removeCase : null}
             loading={loading}
             loadError={loadError}
             onReload={loadScenarios}
@@ -414,6 +430,7 @@ export default function App() {
             key={screen}
             sessions={sessions}
             scenarios={hostScenarios}
+            attempts={attempts}
             initialTab={screen === "dynamics" ? "dynamics" : screen === "organizerStats" ? "overview" : "analytics"}
             onBack={() => openScreen("dashboard")}
           />

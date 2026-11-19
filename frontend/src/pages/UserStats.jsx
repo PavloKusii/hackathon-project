@@ -20,7 +20,7 @@ export default function UserStats({ user, attempts, onBack, onStart, onOpen }) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs uppercase tracking-[.2em] text-olive-400">Особистий кабінет</p>
-          <h1 className="mt-2 font-display text-4xl text-white sm:text-5xl">Моя статистика</h1>
+          <h1 className="mt-2 font-display text-4xl text-white sm:text-5xl">Статистика</h1>
           <p className="mt-2 text-sm text-zinc-400">{user ? `${user.login || user.email}` : "Увійдіть, щоб побачити збережені проходження"}</p>
         </div>
         <button type="button" onClick={onBack} className="border border-zinc-700 px-4 py-3 text-sm text-zinc-300">На головну</button>
@@ -62,12 +62,29 @@ export default function UserStats({ user, attempts, onBack, onStart, onOpen }) {
                   <p className="mt-1 font-mono text-[10px] text-zinc-500">{new Date(item.createdAt).toLocaleString("uk-UA")} · {item.history?.length || 0} рішень</p>
                 </div>
                 <div className="flex gap-3 font-mono text-xs">
-                  {METRICS.map((metric) => <span key={metric.key} className="text-olive-300">{metric.short} {item.scores?.[metric.key] ?? 0}</span>)}
+                  {METRICS.map((metric) => <span key={metric.key} className="text-olive-300">{metric.label} {item.scores?.[metric.key] ?? 0}</span>)}
                 </div>
               </button>
             ))}
           </div>
         ) : <p className="mt-3 text-sm text-zinc-400">Історія з’явиться після першого завершеного сценарію в обліковому записі.</p>}
+      </section>
+      <section className="mt-4 border border-zinc-800 bg-zinc-900/70 p-5">
+        <h2 className="font-display text-2xl text-white">Результати проходжень</h2>
+        <div className="mt-4 flex flex-col gap-3">
+          {completed.map((item) => {
+            const passed = ["integrity", "trust", "effectiveness"].every((key) => (item.scores?.[key] ?? 0) >= 30);
+            return (
+              <button key={item.id} type="button" onClick={() => onOpen(item)} className="border border-zinc-800 bg-zinc-950 p-4 text-left hover:border-olive-500">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-zinc-100">{item.scenarioTitle}</p>
+                  <span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-widest ${passed ? "border-olive-600 text-olive-300" : "border-amber-700 text-amber-300"}`}>{passed ? "Пройшов тест" : "Не пройшов тест"}</span>
+                </div>
+              </button>
+            );
+          })}
+          {!completed.length ? <p className="text-sm text-zinc-400">Розбори з’являться після завершення проходження.</p> : null}
+        </div>
       </section>
       <button type="button" onClick={onStart} className="mt-5 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl text-white">Продовжити тренування →</button>
     </section>

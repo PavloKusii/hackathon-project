@@ -96,6 +96,17 @@ export function findNode(node, id) {
   return null;
 }
 
+export function removeNode(node, id) {
+  if (!node) return null;
+  return {
+    ...node,
+    options: (node.options || []).map((option) => ({
+      ...option,
+      next: option.next?.id === id ? null : removeNode(option.next, id)
+    }))
+  };
+}
+
 export function formTreeFromApi(node) {
   if (!node) return null;
   return {

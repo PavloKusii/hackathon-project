@@ -74,7 +74,7 @@ export default function Account({ session, attempts = [], sessions = [], onBack,
 
       {role === "organizer" ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <Card kicker="Автор" title="Новий кейс" text="Локальний JSON або подання на публічну модерацію." onClick={() => onOpen("caseForm")} />
+          <Card kicker="Автор" title="Новий кейс" text="Створення власного кейса або подання на публічну модерацію." onClick={() => onOpen("caseForm")} />
           <Card kicker="Кімната" title="Групове заняття" text={`${sessions.length} збережених сесій. Учасники лишаються анонімними.`} onClick={() => onOpen("facilitator")} />
           <Card kicker="Група" title="Динаміка проходження" text="Зважена лінія шкал від кроку до кроку." onClick={() => onOpen("dynamics")} />
           <Card kicker="Група" title="Аналітика занять" text="Відсотки варіантів і загальна статистика сесій." onClick={() => onOpen("analytics")} />

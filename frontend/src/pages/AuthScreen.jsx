@@ -34,7 +34,7 @@ export default function AuthScreen({ mode, onSubmit, onSwitch, onBack, error, pe
       </div>
       <p className="mt-4 text-sm leading-6 text-zinc-400">
         {register
-          ? "Оберіть роль учасника або організатора. Супер-адмін через цю форму не створюється. Пошта, роль і хеш пароля зберігаються у файлі сервера data/users.json. У браузері лишається лише сеанс."
+          ? "Оберіть роль учасника або організатора."
           : staff
             ? "Службовий вхід супер-адміна. Публічна реєстрація цієї ролі не видає."
             : "Вхід за електронною поштою або логіном і паролем."}
@@ -73,7 +73,7 @@ export default function AuthScreen({ mode, onSubmit, onSwitch, onBack, error, pe
             <input type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
         ) : null}
-        {register ? <p className="text-xs leading-5 text-zinc-500">Від 8 символів, щонайменше одна літера та одна цифра. Пароль зберігається лише як bcrypt-хеш.</p> : null}
+        {register ? <p className="text-xs leading-5 text-zinc-500">Від 8 символів, щонайменше одна літера та одна цифра.</p> : null}
         {staff ? <p className="text-xs leading-5 text-zinc-500">Стартовий супер-адмін: логін admin, пошта admin@ethical-guard.local, пароль Guard-Admin-2026. Його можна змінити змінними EG_SUPERADMIN_EMAIL і EG_SUPERADMIN_PASSWORD до першого запуску.</p> : null}
         <p className="min-h-5 text-sm text-amber-400" aria-live="polite">{localError || error}</p>
         <button type="submit" disabled={pending} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">

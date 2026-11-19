@@ -1,7 +1,7 @@
 export const METRICS = [
-  { key: "integrity", label: "Доброчесність", short: "ДОБР", color: "#c2b280" },
-  { key: "trust", label: "Довіра та репутація", short: "ДОВІРА", color: "#8ea05a" },
-  { key: "effectiveness", label: "Ефективність", short: "ЕФЕКТ", color: "#d6a045" }
+  { key: "integrity", label: "Доброчесність", short: "Доброчесність", color: "#c2b280" },
+  { key: "trust", label: "Довіра та репутація", short: "Довіра", color: "#8ea05a" },
+  { key: "effectiveness", label: "Ефективність", short: "Ефективність", color: "#d6a045" }
 ];
 
 function Ring({ metric, value, large }) {

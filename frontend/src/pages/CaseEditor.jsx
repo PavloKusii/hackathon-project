@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import ScenarioGraph from "../components/ScenarioGraph";
-import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, findNode, formTreeFromApi, optionLetter, replaceNode } from "../scenarioTree";
+import { apiTreeFromForm, blankOption, buildTree, countNodes, createLinkedOption, createNode, findNode, formTreeFromApi, optionLetter, removeNode, replaceNode } from "../scenarioTree";
 import { partsFromSeconds, secondsFromParts } from "../timer";
 
 function blankStep() {
@@ -124,11 +124,20 @@ function OptionFields({ option, onChange }) {
       <label className="text-sm text-zinc-300">Правова опора
         <textarea value={option.legal} onChange={(event) => onChange({ legal: event.target.value })} className="mt-2 min-h-20 w-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100" />
       </label>
-      {["integrity", "trust", "effectiveness"].map((key) => (
-        <label key={key} className="text-sm text-zinc-300">{key === "integrity" ? "Доброчесність" : key === "trust" ? "Довіра" : "Ефективність"}
-          <input type="number" min="-40" max="40" value={option[key]} onChange={(event) => onChange({ [key]: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100" />
-        </label>
-      ))}
+      {["integrity", "trust", "effectiveness"].map((key) => {
+        const label = key === "integrity" ? "Доброчесність" : key === "trust" ? "Довіра" : "Ефективність";
+        const value = Number(option[key]) || 0;
+        return (
+          <fieldset key={key} className="border border-zinc-800 p-3 text-sm text-zinc-300">
+            <legend>{label}</legend>
+            <div className="mt-2 flex items-center gap-2">
+              <button type="button" onClick={() => onChange({ [key]: Math.max(-40, value - 1) })} className="h-10 w-10 border border-zinc-700 text-xl text-zinc-200">−</button>
+              <input type="number" min="-40" max="40" value={value} onChange={(event) => onChange({ [key]: Math.max(-40, Math.min(40, Number(event.target.value) || 0)) })} className="h-10 w-20 border border-zinc-700 bg-zinc-950 text-center text-zinc-100" />
+              <button type="button" onClick={() => onChange({ [key]: Math.min(40, value + 1) })} className="h-10 w-10 border border-olive-700 text-xl text-olive-200">+</button>
+            </div>
+          </fieldset>
+        );
+      })}
     </div>
   );
 }
@@ -243,7 +252,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
   }
 
   function removeOption(index) {
-    if (!draft || draft.options.length <= 2) return;
+    if (!draft || draft.options.length <= 1) return;
     if (draft.options[index]?.id === optionFocus) setOptionFocus("");
     changeDraft(
       { ...draft, options: draft.options.filter((_, optionIndex) => optionIndex !== index) },
@@ -272,13 +281,29 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
     }, "Наступний етап цієї відповіді прибрано.");
   }
 
+  function removeQuestion() {
+    if (!selected) return;
+    let nextTree;
+    if (selected.id === form.tree?.id) {
+      nextTree = selected.options?.find((option) => option.next)?.next || createNode("1");
+      setGraphNote("Питання видалено.");
+    } else {
+      nextTree = removeNode(formTreeFromApi(apiTreeFromForm(form.tree)), selected.id);
+    }
+    setForm((current) => ({ ...current, tree: nextTree }));
+    setSelectedId("");
+    setOptionFocus("");
+    setDraft(null);
+    setGraphNote("Питання видалено.");
+  }
+
   function saveCase(event) {
     event.preventDefault();
     const tree = storedTree();
     if (branching) {
       const gap = firstGap(tree);
       if (gap) {
-        setLocalError(`Ситуація ${gap.label} ще не заповнена: потрібен текст ситуації і назва кожного варіанта.`);
+        setLocalError(`Питання ${gap.label} ще не заповнене: потрібен текст питання і назва кожного варіанта.`);
         const node = findNode(tree, gap.id);
         setForm((current) => ({ ...current, tree }));
         setSelectedId(gap.id);
@@ -310,7 +335,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
       </div>
       <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">
         {branching
-          ? "Новий кейс одразу починається з ситуації 1 і двох відповідей, А та Б. Клік по ситуації або по варіанту відкриває форму: там заповнюється текст, кнопками «+» і «−» змінюється кількість відповідей, а «+ Наступний етап» продовжує обрану гілку."
+          ? "Новий кейс одразу починається з питання 1 і двох варіантів, А та Б. Клік по питанню або варіанту відкриває форму редагування; бали можна змінювати кнопками «+» і «−», а наступне питання — окремим переходом."
           : "Цей кейс уже зібраний як послідовність кроків. Нові кейси будуються деревом рішень."}
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={saveCase}>
@@ -327,7 +352,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
           <label className="text-sm text-zinc-300 md:col-span-2">Короткий опис
             <textarea value={form.summary} onChange={(event) => patch({ summary: event.target.value })} className="mt-2 min-h-24 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
-          <label className="text-sm text-zinc-300 md:col-span-2">Норми, по одному рядку: назва | посилання
+          <label className="text-sm text-zinc-300 md:col-span-2">Нормативні документи, по одному рядку: назва | посилання
             <textarea value={form.normsText} onChange={(event) => patch({ normsText: event.target.value })} className="mt-2 min-h-24 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
           <fieldset className="text-sm text-zinc-300 md:col-span-2">
@@ -389,9 +414,9 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
-                <p className="mt-1 text-sm text-zinc-400">Клік по ситуації відкриває її текст. Клік по варіанту або стрілці відкриває лише цю відповідь: бали, наслідки і перехід.</p>
+                <p className="mt-1 text-sm text-zinc-400">Питання показано в прямокутнику. Під ним — варіанти відповідей, а стрілка веде до наступного питання.</p>
               </div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} ситуацій</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} питань</p>
             </div>
             <ScenarioGraph tree={liveTree || form.tree} selectedId={selectedId} selectedOptionId={optionFocus} onSelectNode={openNode} onSelectOption={openOption} />
           </section>
@@ -401,10 +426,13 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
           <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Ситуація {selected.label}</p>
-                <h2 className="mt-1 font-display text-3xl text-zinc-50">{draft.options.some((option) => option.id === optionFocus) ? `Варіант ${optionLetter(draft.options.findIndex((option) => option.id === optionFocus))}` : "Ситуація"}</h2>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {selected.label}</p>
+                <h2 className="mt-1 font-display text-3xl text-zinc-50">{draft.options.some((option) => option.id === optionFocus) ? `Варіант ${optionLetter(draft.options.findIndex((option) => option.id === optionFocus))}` : "Питання"}</h2>
               </div>
-              <button type="button" onClick={() => { applyDraft(); setSelectedId(""); setOptionFocus(""); setDraft(null); }} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-300">Закрити</button>
+              <div className="flex gap-2">
+                {selected.id !== form.tree?.id ? <button type="button" onClick={removeQuestion} className="border border-red-900 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-red-300">Видалити питання</button> : null}
+                <button type="button" onClick={() => { applyDraft(); setSelectedId(""); setOptionFocus(""); setDraft(null); }} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-300">Закрити</button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4">
               {(() => {
@@ -413,7 +441,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                 if (!option) {
                   return (
                     <>
-                      <label className="block text-sm text-zinc-300">Текст ситуації
+                      <label className="block text-sm text-zinc-300">Текст питання
                         <textarea value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-900 px-3 py-3 text-zinc-100" />
                       </label>
                       <div className="mt-5 flex items-center justify-between gap-3">
@@ -433,11 +461,11 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                 }
                 return (
                   <>
-                    <button type="button" onClick={() => setOptionFocus("")} className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">До ситуації {selected.label}</button>
+                    <button type="button" onClick={() => setOptionFocus("")} className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">До питання {selected.label}</button>
                     <div className="mt-4 border border-zinc-800 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Варіант {optionLetter(focusIndex)}</p>
-                        <button type="button" onClick={() => removeOption(focusIndex)} disabled={draft.options.length <= 2} className="border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-40">− Видалити</button>
+                        <button type="button" onClick={() => removeOption(focusIndex)} disabled={draft.options.length <= 1} className="border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-40">− Видалити</button>
                       </div>
                       <OptionFields option={option} onChange={(partial) => setDraft({
                         ...draft,
@@ -477,7 +505,7 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
                 <button type="button" onClick={() => patch({ steps: form.steps.filter((_, index) => index !== stepIndex) })} className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">Прибрати крок</button>
               ) : null}
             </div>
-            <label className="mt-3 block text-sm text-zinc-300">Ситуація
+            <label className="mt-3 block text-sm text-zinc-300">Питання
               <textarea required value={step.prompt} onChange={(event) => patchStep(stepIndex, { prompt: event.target.value })} className="mt-2 min-h-28 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
             </label>
             <div className="mt-4 flex flex-col gap-4">
@@ -495,12 +523,12 @@ export default function CaseEditor({ initial, role, pending, error, onSave, onCa
         ) : null}
 
         <details className="border border-zinc-800 bg-zinc-950 p-4">
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-olive-300">JSON кейса</summary>
+          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-olive-300">Структура кейса</summary>
           <pre className="mt-3 overflow-auto text-xs leading-5 text-zinc-400">{JSON.stringify(payload, null, 2)}</pre>
         </details>
         <p className="min-h-5 text-sm text-amber-400">{localError || error}</p>
         <button type="submit" disabled={pending || (branching && !form.tree)} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 disabled:opacity-50">
-          {pending ? "Зберігаємо" : "Зберегти JSON"}
+          {pending ? "Зберігаємо" : "Зберегти кейс"}
         </button>
       </form>
     </section>

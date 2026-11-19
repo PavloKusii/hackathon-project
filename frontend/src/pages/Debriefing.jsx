@@ -1,3 +1,4 @@
+import { useState } from "react";
 import MetricsGauges from "../components/MetricsGauges";
 import { METRICS } from "../components/MetricsGauges";
 
@@ -27,6 +28,9 @@ function posture(scores) {
 }
 
 export default function Debriefing({ scenario, run, onAgain, onHome, stored, guest }) {
+  const [acknowledged, setAcknowledged] = useState(false);
+  const passed = ["integrity", "trust", "effectiveness"].every((key) => (run.scores?.[key] ?? 0) >= 30);
+  const history = Array.isArray(run.history) ? run.history : [];
   const links = [];
   const seen = new Set();
   (scenario.norms || []).forEach((norm) => {
@@ -34,7 +38,7 @@ export default function Debriefing({ scenario, run, onAgain, onHome, stored, gue
     seen.add(norm.title);
     links.push(norm);
   });
-  run.history.forEach((entry) => {
+  history.forEach((entry) => {
     (entry.option.legalRefs || []).forEach((norm) => {
       if (!norm?.title || seen.has(norm.title)) return;
       seen.add(norm.title);
@@ -46,9 +50,14 @@ export default function Debriefing({ scenario, run, onAgain, onHome, stored, gue
     <section>
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{scenario.code} · підсумок</p>
       <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Розбір проходження</h1>
+      <div className="mt-4">
+        <span className={`border px-3 py-2 font-mono text-xs uppercase tracking-[0.16em] ${passed ? "border-olive-600 bg-olive-950 text-olive-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
+          {passed ? "Пройшов тест" : "Не пройшов тест"}
+        </span>
+      </div>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{scenario.title}. Нижче ваші відповіді, пояснення і те, де вибір був слабшим за доброчесністю відносно інших варіантів цього кроку.</p>
       {run.timedOut ? <p className="mt-3 border border-amber-700 bg-amber-950 px-4 py-3 text-sm text-amber-100">Час вийшов. Проходження закрито автоматично. Нижче розбір відповідей, які встигли надійти, разом із поясненнями і слабшими рішеннями.</p> : null}
-      {run.history.length === 0 ? <p className="mt-3 text-sm leading-6 text-zinc-400">Відповідей ще не було, тож шкали лишилися на старті.</p> : null}
+      {history.length === 0 ? <p className="mt-3 text-sm leading-6 text-zinc-400">Відповідей ще не було, тож шкали лишилися на старті.</p> : null}
       {guest ? <p className="mt-3 border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">Ви пройшли кейс як гість. Ці відповіді ніде не зберігаються.</p> : null}
       {stored ? <p className="mt-3 border border-olive-900 bg-olive-950 px-4 py-3 text-sm text-olive-100">Розбір збережено на вашому обліковому записі.</p> : null}
       <section className="mt-6 border border-zinc-800 bg-zinc-900/80 p-5">
@@ -77,7 +86,7 @@ export default function Debriefing({ scenario, run, onAgain, onHome, stored, gue
         </ul>
       </section>
       <div className="mt-4 flex flex-col gap-3">
-        {run.history.map((entry, index) => (
+        {history.map((entry, index) => (
           <article key={`${entry.stepId}-${index}`} className="border border-zinc-800 bg-zinc-950/70 p-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Крок {String(index + 1).padStart(2, "0")}</p>
             <p className={`mt-2 font-mono text-[10px] uppercase tracking-[0.16em] ${entry.mistake ? "text-amber-400" : "text-olive-400"}`}>{entry.mistake ? "Слабше рішення за доброчесністю" : "Рішення тримає доброчесність на рівні найсильнішого варіанта"}</p>
@@ -98,9 +107,13 @@ export default function Debriefing({ scenario, run, onAgain, onHome, stored, gue
           </article>
         ))}
       </div>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button type="button" onClick={onAgain} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">Пройти ще раз</button>
-        <button type="button" onClick={onHome} className="border border-zinc-700 px-5 py-3 font-display text-xl tracking-[0.1em] text-zinc-200 hover:border-olive-500">На головну</button>
+      <label className="mt-6 flex items-start gap-3 border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-300">
+        <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-1" />
+        Я ознайомився(лася) з результатом проходження та розбором.
+      </label>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button type="button" onClick={() => { if (!acknowledged) return; onAgain(); }} disabled={!acknowledged} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 disabled:opacity-50">{passed ? "Пройти ще раз" : "Пройти тест ще раз"}</button>
+        <button type="button" onClick={() => { if (acknowledged) onHome(); }} disabled={!acknowledged} className="border border-zinc-700 px-5 py-3 font-display text-xl tracking-[0.1em] text-zinc-200 disabled:opacity-50">На головну</button>
       </div>
     </section>
   );

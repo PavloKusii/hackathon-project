@@ -16,6 +16,10 @@ export function updateCase(token, id, payload) {
   return authRequest(`/api/cases/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
 }
 
+export function deleteCase(token, id) {
+  return authRequest(`/api/cases/${id}`, { method: "DELETE" }, token);
+}
+
 export function moderateCase(token, id, status, note) {
   return authRequest(`/api/cases/${id}/moderate`, {
     method: "POST",

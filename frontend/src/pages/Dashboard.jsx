@@ -91,16 +91,13 @@ export default function Dashboard({ role, scenarios, onNavigate, onStart }) {
               <span className="mt-2 block font-display text-2xl text-zinc-100">{role === "organizer" ? "Кабінет організатора →" : role === "superadmin" ? "Кабінет супер-адміна →" : "Особистий кабінет →"}</span>
               <span className="mt-1 block text-sm text-zinc-400">Роль, пошта і перехід до збережених даних</span>
             </button>
-            <button type="button" onClick={() => onNavigate("userStats")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
-              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для учасника</span>
-              <span className="mt-2 block font-display text-2xl text-zinc-100">Моя статистика →</span>
-              <span className="mt-1 block text-sm text-zinc-400">Середній баланс і динаміка ваших проходжень</span>
-            </button>
-            <button type="button" onClick={() => onNavigate("results")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500 sm:col-span-2">
-              <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Для учасника</span>
-              <span className="mt-2 block font-display text-2xl text-zinc-100">Результати →</span>
-              <span className="mt-1 block text-sm text-zinc-400">Особисті відповіді, слабші рішення і пояснення до кожного кроку</span>
-            </button>
+            {role === "participant" ? (
+              <button type="button" onClick={() => onNavigate("userStats")} className="border border-zinc-800 bg-zinc-900/80 p-5 text-left hover:border-olive-500">
+                <span className="font-mono text-[10px] uppercase tracking-[.18em] text-olive-400">Статистика</span>
+                <span className="mt-2 block font-display text-2xl text-zinc-100">Статистика і результати →</span>
+                <span className="mt-1 block text-sm text-zinc-400">Показники проходжень і список розборів</span>
+              </button>
+            ) : null}
           </>
         )}
         {organizer ? (

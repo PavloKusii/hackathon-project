@@ -441,6 +441,34 @@ export function attachCaseRoutes(app, hooks = {}) {
     }
   });
 
+  app.delete("/api/cases/:id", async (req, res) => {
+    const user = await userFromRequest(req);
+    if (!user || (user.role !== "organizer" && user.role !== "superadmin")) {
+      res.status(403).json({ message: "Видаляти кейси можуть організатор і супер-адмін." });
+      return;
+    }
+    try {
+      const catalog = await loadCatalog();
+      const current = catalog.byId.get(req.params.id);
+      if (!current) {
+        res.status(404).json({ message: "Кейс не знайдено." });
+        return;
+      }
+      if (current.source !== "custom" || (user.role !== "superadmin" && current.ownerId !== user.id)) {
+        res.status(403).json({ message: "Можна видалити лише власний кейс." });
+        return;
+      }
+      await enqueue(async () => {
+        const cases = await readCases();
+        await writeJson(casesFile, { cases: cases.filter((item) => item.id !== req.params.id) });
+      });
+      await changed();
+      res.json({ deleted: true });
+    } catch (error) {
+      res.status(error.status || 500).json({ message: error.message || "Не вдалося видалити кейс." });
+    }
+  });
+
   app.post("/api/cases/:id/moderate", async (req, res) => {
     const user = await userFromRequest(req);
     if (!user || user.role !== "superadmin") {

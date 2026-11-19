@@ -10,7 +10,7 @@ export default function Results({ attempts, onOpen, onBack }) {
         </div>
         <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">На головну</button>
       </div>
-      <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Кожне збережене проходження відкривається з вашими відповідями, поясненнями і позначками слабших рішень. Організатор групового заняття цих записів не бачить.</p>
+      <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Ваші відповіді, пояснення та розбір проходжень.</p>
       <div className="mt-6 flex flex-col gap-3">
         {attempts.length === 0 ? <p className="text-sm text-zinc-400">Завершіть кейс увійшовши в обліковий запис, і розбір з’явиться тут.</p> : null}
         {attempts.map((item) => (

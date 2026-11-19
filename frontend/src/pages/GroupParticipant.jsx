@@ -326,7 +326,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
             <article className="mt-4 border border-olive-700 bg-zinc-900 p-6">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Очікування старту</p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Ви в кімнаті</h2>
-              <p className="mt-3 text-base leading-7 text-zinc-200">Викладач ще не відкрив перший крок. Ситуація і варіанти з’являться тут одразу після старту.</p>
+              <p className="mt-3 text-base leading-7 text-zinc-200">Викладач ще не відкрив перше питання. Варіанти відповіді з’являться одразу після старту.</p>
             </article>
           ) : null}
           {finished ? (
@@ -355,7 +355,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
           {room.phase === "live" && !finished && !liveStep ? (
             <article className="mt-4 border border-olive-700 bg-zinc-900 p-6">
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-300">Крок відкрито</p>
-              <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Ситуація з’являється</h2>
+              <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">Питання з’являється</h2>
               <p className="mt-3 text-base leading-7 text-zinc-200">Текст дилеми вже на шляху. Залишайтесь на цій сторінці.</p>
             </article>
           ) : null}
@@ -367,7 +367,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
               </p>
               <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">{scenario.title}</h2>
               <article className="mt-4 border border-zinc-700 bg-zinc-950 p-5">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">Ситуація</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">Питання</p>
                 <p className="mt-3 text-base leading-7 text-zinc-100">{liveStep.prompt}</p>
               </article>
               <div className="mt-4 flex flex-col gap-3">

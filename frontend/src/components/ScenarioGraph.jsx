@@ -137,7 +137,7 @@ export default function ScenarioGraph({ tree, selectedId, selectedOptionId, onSe
               className={`absolute overflow-hidden border px-3 py-2 text-left ${active ? "border-olive-400 bg-olive-950" : "border-zinc-700 bg-zinc-900 hover:border-olive-600"}`}
               style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
             >
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Ситуація {node.label}</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {node.label}</span>
               <span className={`mt-1 line-clamp-2 text-sm leading-5 ${filled ? "text-zinc-100" : "text-zinc-500"}`}>
                 {(node.prompt || "").trim() || "Ще не описано"}
               </span>
