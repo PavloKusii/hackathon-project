@@ -423,6 +423,17 @@ export default function App() {
             onBack={() => openScreen("dashboard")}
           />
         )}
+        {screen === "publicCases" && (
+          <CaseSelector
+            title="Публічні кейси"
+            scenarios={scenarios}
+            loading={loading}
+            loadError={loadError}
+            onReload={loadScenarios}
+            onStart={startCase}
+            onBack={() => openScreen("dashboard")}
+          />
+        )}
         {screen === "simulation" && scenario && run && (
           <Simulation scenario={scenario} run={run} setRun={setRun} onExit={() => openScreen("dashboard")} onDebrief={() => openScreen("debrief")} />
         )}
