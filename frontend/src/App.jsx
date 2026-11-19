@@ -407,6 +407,8 @@ export default function App() {
         {screen === "cases" && (
           <CaseSelector
             scenarios={scenarios}
+            allCases={organizer ? playable() : []}
+            organizerView={organizer}
             localCases={role === "guest" ? [] : localCases}
             onEdit={organizer ? (item) => {
               if (!openScreen("caseForm")) return;

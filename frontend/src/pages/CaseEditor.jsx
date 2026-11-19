@@ -265,6 +265,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
   const [dirty, setDirty] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState("");
+  const [graphZoom, setGraphZoom] = useState(1);
   const selected = form.tree && selectedId ? findNode(form.tree, selectedId) : null;
   const liveTree = form.tree && draft && selected ? replaceNode(form.tree, selected.id, mergeDraft(selected, draft)) : form.tree;
   const payload = useMemo(() => toPayload({ ...form, tree: liveTree }), [form, liveTree]);
@@ -621,14 +622,21 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         </div>
 
         {branching && form.tree ? (
-          <section className={draft ? "lg:pr-[38rem]" : ""}>
+          <section className={`min-w-0 ${draft ? "lg:pr-[38rem]" : ""}`}>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
                 <p className="mt-1 text-sm text-zinc-400">Питання показано в прямокутнику. Під ним — варіанти відповідей, а стрілка веде до наступного питання.</p>
               </div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} питань</p>
+              <div className="flex items-center gap-2">
+                <p className="mr-2 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">{countNodes(liveTree || form.tree)} питань</p>
+                <button type="button" aria-label="Зменшити масштаб дерева" onClick={() => setGraphZoom((zoom) => Math.max(0.5, Math.round((zoom - 0.1) * 100) / 100))} className="border border-zinc-700 px-3 py-2 font-mono text-sm text-zinc-200 hover:border-olive-500">−</button>
+                <span className="min-w-12 text-center font-mono text-xs text-zinc-300">{Math.round(graphZoom * 100)}%</span>
+                <button type="button" aria-label="Збільшити масштаб дерева" onClick={() => setGraphZoom((zoom) => Math.min(2, Math.round((zoom + 0.1) * 100) / 100))} className="border border-zinc-700 px-3 py-2 font-mono text-sm text-zinc-200 hover:border-olive-500">+</button>
+                <button type="button" onClick={() => setGraphZoom(1)} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-300 hover:border-olive-500">Скинути</button>
+              </div>
             </div>
+            <p className="mb-2 text-xs text-zinc-500">Ctrl/⌘ + коліщатко або жест масштабування на тачпаді змінює масштаб дерева.</p>
             <ScenarioGraph
               tree={liveTree || form.tree}
               selectedId={selectedId}
@@ -637,6 +645,8 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
               onSelectOption={openOption}
               onAddNext={addNextFromGraph}
               onAddOption={addOptionFromGraph}
+              zoom={graphZoom}
+              onZoomChange={(zoom) => setGraphZoom(Math.max(0.5, Math.min(2, Math.round(zoom * 100) / 100)))}
             />
           </section>
         ) : null}

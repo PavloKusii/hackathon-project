@@ -96,15 +96,25 @@ export default function ScenarioGraph({
   onSelectNode,
   onSelectOption,
   onAddNext,
-  onAddOption
+  onAddOption,
+  zoom = 1,
+  onZoomChange
 }) {
   const { nodes, edges } = layout(tree);
   const width = Math.max(420, ...nodes.map((item) => item.x + NODE_W + PAD));
   const height = Math.max(420, ...nodes.map((item) => item.y + item.height + PAD));
+  const scaledWidth = Math.max(420, width * zoom);
+  const scaledHeight = Math.max(420, height * zoom);
+  function handleWheel(event) {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    onZoomChange?.(zoom + (event.deltaY < 0 ? 0.08 : -0.08));
+  }
 
   return (
-    <div className="overflow-auto border border-zinc-800 bg-zinc-950/80" style={{ minHeight: 420 }}>
-      <div className="relative" style={{ width, height: Math.max(height, 420) }}>
+    <div onWheel={handleWheel} className="min-w-0 overflow-auto border border-zinc-800 bg-zinc-950/80" style={{ minHeight: 420 }}>
+      <div className="relative" style={{ width: scaledWidth, height: scaledHeight, minWidth: 420, minHeight: 420 }}>
+        <div className="absolute left-0 top-0 origin-top-left" style={{ width, height: Math.max(height, 420), transform: `scale(${zoom})` }}>
         <svg className="absolute inset-0" width={width} height={Math.max(height, 420)} aria-hidden="true">
           <defs>
             <marker id="scenario-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -204,6 +214,7 @@ export default function ScenarioGraph({
             </article>
           );
         })}
+        </div>
       </div>
     </div>
   );

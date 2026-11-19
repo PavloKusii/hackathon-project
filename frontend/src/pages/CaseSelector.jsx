@@ -1,9 +1,12 @@
 ﻿import { useMemo, useState } from "react";
 
-export default function CaseSelector({ scenarios, localCases = [], loading, loadError, onReload, onStart, onEdit, onBack, title = "Кейси" }) {
+export default function CaseSelector({ scenarios, allCases = [], organizerView = false, localCases = [], loading, loadError, onReload, onStart, onEdit, onBack, title = "Кейси" }) {
   const [selectedField, setSelectedField] = useState("all");
+  const [organizerTab, setOrganizerTab] = useState("all");
   const fields = useMemo(() => [...new Set(scenarios.map((item) => item.field).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk")), [scenarios]);
   const visibleScenarios = selectedField === "all" ? scenarios : scenarios.filter((item) => item.field === selectedField);
+  const organizerCases = organizerTab === "all" ? allCases : localCases;
+  const ownCaseIds = new Set(localCases.map((item) => item.id));
 
   return (
     <section>
@@ -22,8 +25,39 @@ export default function CaseSelector({ scenarios, localCases = [], loading, load
           {loading ? "Завантаження…" : "Оновити список"}
         </button>
       </div>
+      {organizerView ? (
+        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Список кейсів">
+          <button type="button" role="tab" aria-selected={organizerTab === "all"} onClick={() => setOrganizerTab("all")} className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] ${organizerTab === "all" ? "border-olive-500 bg-olive-950 text-olive-100" : "border-zinc-700 text-zinc-300"}`}>Усі кейси</button>
+          <button type="button" role="tab" aria-selected={organizerTab === "mine"} onClick={() => setOrganizerTab("mine")} className={`border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] ${organizerTab === "mine" ? "border-olive-500 bg-olive-950 text-olive-100" : "border-zinc-700 text-zinc-300"}`}>Мої кейси ({localCases.length})</button>
+        </div>
+      ) : null}
+      {organizerView ? (
+        organizerCases.length ? (
+          <div className="mt-5 grid auto-rows-fr gap-4 lg:grid-cols-3">
+            {organizerCases.map((item) => (
+              <article key={item.id} className="flex h-full flex-col border border-olive-900 border-l-4 border-l-olive-500 bg-zinc-900/80 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="border border-olive-700 bg-olive-950 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Кейс</span>
+                  <p className="text-right font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.field}</p>
+                </div>
+                <h2 className="mt-2 font-display text-3xl leading-tight tracking-wide text-zinc-50">{item.title}</h2>
+                <p className="mt-3 flex-1 pb-2 text-sm leading-6 text-zinc-400">{item.summary}</p>
+                <p className="mt-3 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  {ownCaseIds.has(item.id)
+                    ? item.status === "published" ? "Мій кейс · публічний" : item.status === "pending" ? "Мій кейс · на розгляді" : item.status === "rejected" ? "Мій кейс · приховано" : "Мій кейс · локальний"
+                    : `Кроків: ${item.steps?.length || 0}`}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onStart(item.id)} className="min-h-12 flex-1 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100 hover:border-olive-400 hover:bg-olive-700">Пройти</button>
+                  {ownCaseIds.has(item.id) && onEdit ? <button type="button" onClick={() => onEdit(item)} className="border border-olive-700 px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-olive-200 hover:border-olive-500">Редагувати</button> : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : <p className="mt-5 border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">{organizerTab === "mine" ? "Ви ще не створили готових кейсів." : "Поки немає доступних кейсів."}</p>
+      ) : null}
       {scenarios.length > 0 ? (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        !organizerView ? <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-zinc-400">Доступно кейсів: {visibleScenarios.length}</p>
           {fields.length > 0 ? (
             <label className="flex items-center gap-3 text-sm text-zinc-300">
@@ -34,33 +68,35 @@ export default function CaseSelector({ scenarios, localCases = [], loading, load
               </select>
             </label>
           ) : null}
-        </div>
+        </div> : null
       ) : null}
-      {scenarios.length === 0 && !loading ? (
-        <p className="mt-6 border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">{loadError || "Поки немає доступних кейсів."}</p>
-      ) : loading ? (
-        <div className="mt-5 grid gap-3 lg:grid-cols-3" aria-label="Завантаження кейсів" aria-busy="true">
-          {[1, 2, 3].map((item) => <div key={item} className="h-64 animate-pulse border border-zinc-800 bg-zinc-900/70" />)}
-        </div>
-      ) : visibleScenarios.length === 0 ? (
-        <p className="mt-5 border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">У цьому напрямку поки немає кейсів.</p>
-      ) : (
-        <div className="mt-5 grid auto-rows-fr gap-4 lg:grid-cols-3">
-          {visibleScenarios.map((item) => (
-            <article key={item.id} className="flex h-full flex-col border border-olive-900 border-l-4 border-l-olive-500 bg-zinc-900/80 p-5 transition-colors hover:border-olive-700">
-              <div className="flex items-center justify-between gap-3">
-                <span className="border border-olive-700 bg-olive-950 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Кейс</span>
-                <p className="text-right font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.field}</p>
-              </div>
-              <h2 className="mt-2 font-display text-3xl leading-tight tracking-wide text-zinc-50">{item.title}</h2>
-              <p className="mt-3 flex-1 pb-2 text-sm leading-6 text-zinc-400">{item.summary}</p>
-              <p className="mt-3 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Кроків: {item.steps?.length || 0}</p>
-              <button type="button" onClick={() => onStart(item.id)} className="mt-4 min-h-12 w-full border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl tracking-[0.04em] text-olive-100 transition-colors hover:border-olive-400 hover:bg-olive-700">Почати проходження</button>
-            </article>
-          ))}
-        </div>
-      )}
-      {localCases.length > 0 ? (
+      {!organizerView ? (
+        scenarios.length === 0 && !loading ? (
+          <p className="mt-6 border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">{loadError || "Поки немає доступних кейсів."}</p>
+        ) : loading ? (
+          <div className="mt-5 grid gap-3 lg:grid-cols-3" aria-label="Завантаження кейсів" aria-busy="true">
+            {[1, 2, 3].map((item) => <div key={item} className="h-64 animate-pulse border border-zinc-800 bg-zinc-900/70" />)}
+          </div>
+        ) : visibleScenarios.length === 0 ? (
+          <p className="mt-5 border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">У цьому напрямку поки немає кейсів.</p>
+        ) : (
+          <div className="mt-5 grid auto-rows-fr gap-4 lg:grid-cols-3">
+            {visibleScenarios.map((item) => (
+              <article key={item.id} className="flex h-full flex-col border border-olive-900 border-l-4 border-l-olive-500 bg-zinc-900/80 p-5 transition-colors hover:border-olive-700">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="border border-olive-700 bg-olive-950 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Кейс</span>
+                  <p className="text-right font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.field}</p>
+                </div>
+                <h2 className="mt-2 font-display text-3xl leading-tight tracking-wide text-zinc-50">{item.title}</h2>
+                <p className="mt-3 flex-1 pb-2 text-sm leading-6 text-zinc-400">{item.summary}</p>
+                <p className="mt-3 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Кроків: {item.steps?.length || 0}</p>
+                <button type="button" onClick={() => onStart(item.id)} className="mt-4 min-h-12 w-full border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl tracking-[0.04em] text-olive-100 transition-colors hover:border-olive-400 hover:bg-olive-700">Почати проходження</button>
+              </article>
+            ))}
+          </div>
+        )
+      ) : null}
+      {!organizerView && localCases.length > 0 ? (
         <div className="mt-8">
           <h2 className="font-display text-3xl text-zinc-50">Мої кейси</h2>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
