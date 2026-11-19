@@ -748,7 +748,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         </button>
         {role === "organizer" ? (
           <button type="button" disabled={pending} onClick={saveDraft} className="border border-zinc-600 px-5 py-3 font-display text-xl tracking-[0.06em] text-zinc-200 disabled:opacity-50">
-            {pending ? "Зберігаємо…" : "Зберегти чернетку / незавершений кейс"}
+            {pending ? "Зберігаємо…" : "Зберегти незавершений кейс (чернетку)"}
           </button>
         ) : null}
       </form>
