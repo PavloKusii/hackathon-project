@@ -510,7 +510,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
   }
 
   return (
-    <section className="mx-auto w-full border border-zinc-800 bg-zinc-900/30 p-3 sm:p-5 lg:p-7">
+    <section className={`w-full transition-all duration-300 ${draft && selected ? "lg:pr-[25rem]" : ""}`}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{initial ? "Редагування" : "Новий кейс"}</p>
