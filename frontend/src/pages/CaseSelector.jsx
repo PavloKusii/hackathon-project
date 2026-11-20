@@ -43,9 +43,12 @@ export default function CaseSelector({ scenarios, allCases = [], organizerView =
                 <h2 className="mt-2 font-display text-3xl leading-tight tracking-wide text-zinc-50">{item.title}</h2>
                 <p className="mt-3 flex-1 pb-2 text-sm leading-6 text-zinc-400">{item.summary}</p>
                 <p className="mt-3 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                  {ownCaseIds.has(item.id)
-                    ? item.status === "published" ? "Мій кейс · публічний" : item.status === "pending" ? "Мій кейс · на розгляді" : item.status === "rejected" ? "Мій кейс · приховано" : "Мій кейс · локальний"
-                    : `Кроків: ${item.steps?.length || 0}`}
+                  {ownCaseIds.has(item.id) && (
+                      item.status === "published" ? "Мій кейс · публічний" :
+                          item.status === "pending" ? "Мій кейс · на розгляді" :
+                              item.status === "rejected" ? "Мій кейс · приховано" :
+                                  "Мій кейс · локальний"
+                  )}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" onClick={() => onStart(item.id)} className="min-h-12 flex-1 border border-olive-600 bg-olive-800 px-4 py-3 text-left font-display text-xl text-olive-100 hover:border-olive-400 hover:bg-olive-700">Пройти</button>
