@@ -9,7 +9,7 @@ const NAVIGATION = [
 export default function Header({ screen, role, user, onNavigate, onLogout }) {
   const organizer = role === "organizer";
   return (
-    <header>
+    <header className="sticky top-0 z-50 w-full bg-[#0d1310]/95 backdrop-blur-md border-b border-[#1b2620]">
       <div className="border-b border-olive-800 bg-olive-950">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
           <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-olive-300">EG-TRN · {ROLE_LABELS[role] || "Гість"}</span>
