@@ -63,6 +63,7 @@ function scenarioById(id) {
 function clearVotes(room) {
   for (const guest of room.guests.values()) {
     guest.optionId = null;
+    guest.stepId = "";
   }
 }
 
@@ -164,9 +165,7 @@ async function finishOnTime(code) {
   const total = sharedSteps(scenario);
   snapshotStep(room);
   if (room.timeMode === "step" && room.stepIndex < total - 1) {
-    room.stepIndex += 1;
-    room.stepStartedAt = Date.now();
-    clearVotes(room);
+    room.stepClockPaused = true;
     armRoomTimer(room);
     broadcast(room);
     return;
@@ -350,12 +349,12 @@ io.on("connection", (socket) => {
       const scenario = scenarioById(room.scenarioId);
       socket.emit("joined_room", { code: room.code, scenarioId: room.scenarioId });
       if (scenario) socket.emit("scenario_payload", scenario);
-      socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest?.optionId || "" });
+      socket.emit("your_vote", { stepIndex: room.stepIndex, stepId: guest?.stepId || "", optionId: guest?.optionId || "" });
       socket.emit("room_state", playerState(room));
       return;
     }
     releaseSocket(socket);
-    if (!room.guests.has(id)) room.guests.set(id, { optionId: null, sockets: 0 });
+    if (!room.guests.has(id)) room.guests.set(id, { optionId: null, stepId: "", sockets: 0 });
     const guest = room.guests.get(id);
     guest.sockets += 1;
     sockets.set(socket.id, { role: "guest", code: room.code, guestId: id });
@@ -363,7 +362,7 @@ io.on("connection", (socket) => {
     const scenario = scenarioById(room.scenarioId);
     socket.emit("joined_room", { code: room.code, scenarioId: room.scenarioId });
     if (scenario) socket.emit("scenario_payload", scenario);
-    socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest.optionId || "" });
+    socket.emit("your_vote", { stepIndex: room.stepIndex, stepId: guest.stepId || "", optionId: guest.optionId || "" });
     broadcast(room);
   });
 
@@ -395,34 +394,14 @@ io.on("connection", (socket) => {
       armRoomTimer(room);
     } else if (room.phase === "live") {
       snapshotStep(room);
-      const currentStep = scenario.steps[room.stepIndex];
-      const votes = [...room.guests.values()].reduce((counts, guest) => {
-        if (guest.optionId) counts.set(guest.optionId, (counts.get(guest.optionId) || 0) + 1);
-        return counts;
-      }, new Map());
-      const selectedOptionId = [...votes.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
-      const selectedOption = currentStep?.options?.find((option) => option.id === selectedOptionId);
-      const nextStepId = selectedOption?.nextStepId;
-      const nextStepIndex = nextStepId
-        ? scenario.steps.findIndex((step) => step.id === nextStepId)
-        : -1;
-      if (nextStepIndex >= 0) {
-        room.stepIndex = nextStepIndex;
-        clearVotes(room);
-      } else if ((nextStepId && nextStepIndex < 0) || room.stepIndex >= total - 1) {
-        room.phase = "done";
-      } else {
-        room.stepIndex += 1;
-        room.stepStartedAt = Date.now();
-        clearVotes(room);
-      }
+      room.phase = "done";
       armRoomTimer(room);
     }
     broadcast(room);
     if (room.phase === "done") await persistRoom(room);
   });
 
-  socket.on("submit_vote", ({ code, guestId, optionId } = {}) => {
+  socket.on("submit_vote", ({ code, guestId, stepId, optionId } = {}) => {
     const room = rooms.get(String(code || "").toUpperCase());
     const id = String(guestId || "");
     const meta = sockets.get(socket.id);
@@ -435,7 +414,24 @@ io.on("connection", (socket) => {
       return;
     }
     const scenario = scenarioById(room.scenarioId);
-    const step = scenario?.steps?.[room.stepIndex];
+    const step = scenario?.tree
+      ? scenario.tree.id === stepId
+        ? scenario.tree
+        : null
+      : scenario?.steps?.find((item) => item.id === (stepId || scenario.steps[room.stepIndex]?.id));
+    if (!step && scenario?.tree && stepId) {
+      const findStep = (node) => {
+        if (!node) return null;
+        if (node.id === stepId) return node;
+        for (const nested of node.options || []) {
+          const found = findStep(nested.next);
+          if (found) return found;
+        }
+        return null;
+      };
+      const found = findStep(scenario.tree);
+      if (found) return; // tree choices are recorded by the participant locally
+    }
     const option = step?.options?.find((item) => item.id === optionId);
     if (!option) {
       socket.emit("room_error", { message: "Такого варіанту на цьому кроці немає." });
@@ -446,12 +442,13 @@ io.on("connection", (socket) => {
       socket.emit("room_error", { message: "Спочатку увійдіть у кімнату." });
       return;
     }
-    if (guest.optionId) {
-      socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest.optionId });
+    if (guest.optionId && guest.stepId === step.id) {
+      socket.emit("your_vote", { stepIndex: room.stepIndex, stepId: guest.stepId, optionId: guest.optionId });
       return;
     }
     guest.optionId = option.id;
-    socket.emit("your_vote", { stepIndex: room.stepIndex, optionId: guest.optionId });
+    guest.stepId = step.id;
+    socket.emit("your_vote", { stepIndex: room.stepIndex, stepId: guest.stepId, optionId: guest.optionId });
     broadcast(room);
   });
 

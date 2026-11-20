@@ -45,6 +45,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const [room, setRoom] = useState(null);
   const [choice, setChoice] = useState({ stepIndex: -1, nodeId: "", optionId: "" });
   const [branchId, setBranchId] = useState("");
+  const [personalStepId, setPersonalStepId] = useState("");
   const [note, setNote] = useState("");
   const [joining, setJoining] = useState(false);
   const [pass, setPass] = useState("");
@@ -77,11 +78,12 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
     });
     const offVote = subscribe("your_vote", (payload) => {
       if (!payload) return;
+      if (payload.stepId) setPersonalStepId(payload.stepId);
       setChoice((current) => {
         if (current.nodeId) return current;
         return {
           stepIndex: Number(payload.stepIndex),
-          nodeId: "",
+          nodeId: payload.stepId || "",
           optionId: payload.optionId || ""
         };
       });
@@ -158,7 +160,9 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const scenario = scenarios.find((item) => item.id === room?.scenarioId) || (bundle?.id === room?.scenarioId ? bundle : null);
   const branching = Boolean(scenario?.tree);
   const liveStep = scenario && room && room.phase === "live"
-    ? (branching ? findNode(scenario.tree, branchId || scenario.tree.id) : scenario.steps?.[room.stepIndex])
+    ? (branching
+      ? findNode(scenario.tree, branchId || scenario.tree.id)
+      : (scenario.steps?.find((item) => item.id === personalStepId) || scenario.steps?.[room.stepIndex]))
     : null;
   const voted = branching
     ? Boolean(liveStep && choice.nodeId === liveStep.id && choice.optionId)
@@ -259,15 +263,31 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   function vote(optionId) {
     if (!room || room.phase !== "live" || voted || !liveStep) return;
     setChoice({ stepIndex: room.stepIndex, nodeId: liveStep.id, optionId });
-    if (!branching || liveStep.id === scenario.tree.id) {
-      send("submit_vote", { code: room.code, guestId: guestIdFor(room.code), optionId });
-    }
+    send("submit_vote", {
+      code: room.code,
+      guestId: guestIdFor(room.code),
+      stepId: liveStep.id,
+      optionId
+    });
   }
 
   function continueBranch() {
     if (!picked?.next) return;
     setBranchId(picked.next.id);
     setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+  }
+
+  function continueLinear() {
+    if (!picked) return;
+    if (picked.nextStepId) {
+      const nextStep = scenario.steps.find((item) => item.id === picked.nextStepId);
+      if (nextStep) {
+        setPersonalStepId(nextStep.id);
+        setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+        return;
+      }
+    }
+    setSelfDone(true);
   }
 
   return (
@@ -388,8 +408,18 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
                   <div className="mt-4">
                     <MetricsGauges scores={scores} />
                   </div>
-                  <FeedbackPanel option={picked} last={!picked.next} onNext={picked.next ? continueBranch : undefined} />
-                  {!picked.next ? <p className="mt-3 text-sm leading-6 text-zinc-400">Вашу гілку пройдено. Загальний підсумок відкриється, коли організатор завершить заняття.</p> : null}
+                  {branching ? (
+                    <>
+                      <FeedbackPanel option={picked} last={!picked.next} onNext={picked.next ? continueBranch : undefined} />
+                      {!picked.next ? <p className="mt-3 text-sm leading-6 text-zinc-400">Вашу гілку пройдено. Загальний підсумок відкриється, коли організатор завершить заняття.</p> : null}
+                    </>
+                  ) : (
+                    <FeedbackPanel
+                      option={picked}
+                      last={Boolean(picked.end) || !picked.nextStepId}
+                      onNext={continueLinear}
+                    />
+                  )}
                 </div>
               ) : null}
             </div>

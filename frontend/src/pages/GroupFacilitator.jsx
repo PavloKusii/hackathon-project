@@ -158,7 +158,7 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
 
   let actionLabel = "Відкрити перший крок";
   if (room?.phase === "live") {
-    actionLabel = room.stepIndex >= (room.stepCount || 1) - 1 ? "Завершити заняття" : "Наступний крок";
+    actionLabel = "Завершити заняття";
   }
   if (room?.phase === "done") actionLabel = "Заняття завершено";
 
