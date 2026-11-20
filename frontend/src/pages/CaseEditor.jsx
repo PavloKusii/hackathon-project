@@ -636,7 +636,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
                 <button type="button" onClick={() => setGraphZoom(1)} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-300 hover:border-olive-500">Скинути</button>
               </div>
             </div>
-            <p className="mb-2 text-xs text-zinc-500">Ctrl/⌘ + коліщатко або жест масштабування на тачпаді змінює масштаб дерева.</p>
+            
             <ScenarioGraph
               tree={liveTree || form.tree}
               selectedId={selectedId}
