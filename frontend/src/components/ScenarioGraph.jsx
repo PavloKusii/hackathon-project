@@ -161,12 +161,22 @@ export default function ScenarioGraph({
               style={{ left: x, top: y, width: NODE_W, height: cardHeight }}
             >
               <button
-                type="button"
-                onClick={() => onSelectNode(node.id)}
-                className="block h-[104px] w-full border-b border-zinc-700 px-3 py-2 text-left hover:bg-olive-950/70"
+                  type="button"
+                  onClick={() => onSelectNode(node.id)}
+                  className="flex h-[104px] w-full flex-col justify-center overflow-hidden border-b border-zinc-700 px-3 py-2 text-left hover:bg-olive-950/70"
               >
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {node.label}</span>
-                <span className={`mt-1 block line-clamp-3 text-sm leading-5 ${(node.prompt || "").trim() ? "text-zinc-100" : "text-zinc-500"}`}>
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">
+                ПИТАННЯ {node.label}
+              </span>
+                <span
+                    className={`mt-1 block overflow-hidden text-sm leading-5 ${(node.prompt || "").trim() ? "text-zinc-100" : "text-zinc-500"}`}
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical",
+                      wordBreak: "break-all"
+                    }}
+                >
                   {(node.prompt || "").trim() || "Натисніть, щоб додати текст питання"}
                 </span>
               </button>
