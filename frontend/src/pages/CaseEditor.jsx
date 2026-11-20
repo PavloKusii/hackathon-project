@@ -555,7 +555,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={saveCase}>
         <div className="grid gap-4 border border-zinc-800 bg-zinc-900/80 p-5 md:grid-cols-2">
-          <label className="text-sm text-zinc-300">Тема
+          <label className="text-sm text-zinc-300 md:col-span-2">Тема
             <input required value={form.field} onChange={(event) => patch({ field: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
           <label className="text-sm text-zinc-300 md:col-span-2">Назва
@@ -622,7 +622,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         </div>
 
         {branching && form.tree ? (
-          <section className={`min-w-0 ${draft ? "lg:pr-[38rem]" : ""}`}>
+          <section className="min-w-0 w-full">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
