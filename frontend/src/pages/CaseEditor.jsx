@@ -652,7 +652,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         ) : null}
 
         {branching && draft && selected ? (
-          <aside className="fixed top-[115px] bottom-0 right-0 z-40 flex h-[calc(100vh-61px)] w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
+          <aside className="fixed top-[115px] bottom-0 right-0 z-40 flex h-[calc(100vh-115px)] w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {selected.label}</p>
