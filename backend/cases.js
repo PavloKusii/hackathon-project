@@ -11,6 +11,7 @@ const casesFile = path.join(dataDir, "cases.json");
 const overridesFile = path.join(dataDir, "overrides.json");
 const attemptsFile = path.join(dataDir, "attempts.json");
 const sessionsFile = path.join(dataDir, "sessions.json");
+const resultsFile = path.join(dataDir, "sessions-results.json");
 
 const METRICS = ["integrity", "trust", "effectiveness"];
 const BASE_SCORE = 100;
@@ -827,6 +828,43 @@ export function attachCaseRoutes(app, hooks = {}) {
     ));
     res.json({ sessions });
   });
+
+  app.get("/api/sessions/:code", async (req, res) => {
+    const user = await userFromRequest(req);
+    if (!user || (user.role !== "organizer" && user.role !== "superadmin")) {
+      res.status(403).json({ message: "Зведення сесії доступне організатору та супер-адміну." });
+      return;
+    }
+    const code = String(req.params.code || "").trim().toUpperCase();
+    const stored = await readJson(sessionsFile, { sessions: [] });
+    const session = (Array.isArray(stored.sessions) ? stored.sessions : []).find((item) => (
+      item.code === code && (user.role === "superadmin" || item.hostId === user.id)
+    ));
+    if (!session) {
+      res.status(404).json({ message: "Сесію не знайдено у збережених даних." });
+      return;
+    }
+    res.json({ session });
+  });
+
+  app.get("/api/rooms/:code/results", async (req, res) => {
+    const code = String(req.params.code || "").trim().toUpperCase();
+    if (!code) {
+      res.status(400).json({ message: "Код кімнати не вказано." });
+      return;
+    }
+    const stored = await readJson(resultsFile, {});
+    const rooms = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    const room = rooms[code] || null;
+    const participants = room?.participants || [];
+    console.log("Room results route:", {
+      code,
+      participantCount: participants.length,
+      finishedCount: room?.finishedCount || participants.filter((participant) => participant.status === "completed").length,
+      participants
+    });
+    res.json({ room, participants, phase: room?.phase || "lobby" });
+  });
 }
 
 export async function appendSession(record) {
@@ -843,7 +881,8 @@ export async function appendSession(record) {
     createdAt: record.createdAt,
     finishedAt: new Date().toISOString(),
     participantPeak: Number(record.participantPeak) || 0,
-    steps: Array.isArray(record.steps) ? record.steps : []
+    steps: Array.isArray(record.steps) ? record.steps : [],
+    participants: Array.isArray(record.participants) ? record.participants : []
   };
   await enqueue(async () => {
     const stored = await readJson(sessionsFile, { sessions: [] });
@@ -852,6 +891,82 @@ export async function appendSession(record) {
     await writeJson(sessionsFile, { sessions: sessions.slice(0, 200) });
   });
   return session;
+}
+
+export async function upsertSession(record) {
+  const session = {
+    id: record.id || crypto.randomUUID(),
+    code: record.code,
+    scenarioId: record.scenarioId,
+    scenarioTitle: record.scenarioTitle || "",
+    scenarioCode: record.scenarioCode || "",
+    groupName: record.groupName || "",
+    groupLabel: record.groupLabel || "",
+    named: Boolean(record.named),
+    hostId: record.hostId,
+    createdAt: record.createdAt,
+    finishedAt: record.phase === "done" ? new Date().toISOString() : (record.finishedAt || null),
+    participantPeak: Number(record.participantPeak) || 0,
+    steps: Array.isArray(record.steps) ? record.steps : [],
+    participants: Array.isArray(record.participants) ? record.participants : [],
+    phase: record.phase || "lobby"
+  };
+  await enqueue(async () => {
+    const stored = await readJson(sessionsFile, { sessions: [] });
+    const sessions = Array.isArray(stored.sessions) ? stored.sessions : [];
+    const existingIndex = sessions.findIndex((item) => item.code === record.code);
+    if (existingIndex >= 0) {
+      session.id = sessions[existingIndex].id;
+      sessions[existingIndex] = {
+        ...sessions[existingIndex],
+        ...session
+      };
+    } else {
+      sessions.unshift(session);
+    }
+    await writeJson(sessionsFile, { sessions: sessions.slice(0, 200) });
+  });
+  return session;
+}
+
+export async function ensureRoomResultsFile() {
+  await enqueue(async () => {
+    await fs.mkdir(dataDir, { recursive: true });
+    try {
+      await fs.access(resultsFile);
+    } catch {
+      await writeJson(resultsFile, {});
+    }
+  });
+}
+
+export async function upsertRoomResults(record) {
+  const result = {
+    code: record.code,
+    scenarioId: record.scenarioId,
+    scenarioTitle: record.scenarioTitle || "",
+    phase: record.phase || "lobby",
+    participantPeak: Number(record.participantPeak) || 0,
+    finishedCount: Array.isArray(record.participants)
+      ? record.participants.filter((participant) => participant.status === "completed").length
+      : 0,
+    steps: Array.isArray(record.steps) ? record.steps : [],
+    participants: Array.isArray(record.participants) ? record.participants : [],
+    updatedAt: new Date().toISOString()
+  };
+  await enqueue(async () => {
+    const stored = await readJson(resultsFile, {});
+    const rooms = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    rooms[result.code] = result;
+    await writeJson(resultsFile, rooms);
+    console.log("Room results JSON written:", {
+      file: resultsFile,
+      code: result.code,
+      participantCount: result.participants.length,
+      finishedCount: result.finishedCount
+    });
+  });
+  return result;
 }
 
 function scoreChoices(scenario, choices) {

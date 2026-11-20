@@ -73,3 +73,11 @@ export function loadAttempts(token) {
 export function loadSessions(token) {
   return authRequest("/api/sessions", {}, token);
 }
+
+export function loadSessionByCode(code, token) {
+  return authRequest(`/api/sessions/${encodeURIComponent(code)}`, {}, token);
+}
+
+export function loadRoomResults(code, token) {
+  return authRequest(`/api/rooms/${encodeURIComponent(code)}/results`, {}, token);
+}

@@ -23,7 +23,7 @@ export async function authRequest(path, options = {}, token) {
   const response = await fetch(path, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.message || "Запит не виконано.");
+    const error = new Error(data.message || "");
     error.status = response.status;
     throw error;
   }

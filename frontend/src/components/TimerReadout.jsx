@@ -6,7 +6,7 @@ export default function TimerReadout({ endsAt, scope }) {
 
   useEffect(() => {
     if (!endsAt) return undefined;
-    const id = window.setInterval(() => setNow(Date.now()), 250);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [endsAt]);
 

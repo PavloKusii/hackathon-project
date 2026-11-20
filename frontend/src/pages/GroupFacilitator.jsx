@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ShareChart } from "../components/Charts";
 import TimerReadout from "../components/TimerReadout";
 import { send, subscribe } from "../services/socketService";
+import { loadRoomResults } from "../services/caseService";
 
 const STORAGE = "eg-host";
 
@@ -70,11 +70,14 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
   const [groupName, setGroupName] = useState("");
   const [session, setSession] = useState(() => readHost());
   const [room, setRoom] = useState(null);
-  const [archive, setArchive] = useState([]);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lanHost, setLanHost] = useState("");
+  const [resultError, setResultError] = useState("");
+  const [timerMode, setTimerMode] = useState("none");
+  const [timerMinutes, setTimerMinutes] = useState(5);
+  const [timerSeconds, setTimerSeconds] = useState(0);
 
   useEffect(() => {
     if (!scenarioId && scenarios[0]) setScenarioId(scenarios[0].id);
@@ -83,13 +86,13 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
   useEffect(() => {
     let active = true;
     fetch("/api/host")
-      .then((response) => response.json())
-      .then((payload) => {
-        if (active) setLanHost(payload.host || "");
-      })
-      .catch(() => {
-        if (active) setLanHost("");
-      });
+        .then((response) => response.json())
+        .then((payload) => {
+          if (active) setLanHost(payload.host || "");
+        })
+        .catch(() => {
+          if (active) setLanHost("");
+        });
     return () => {
       active = false;
     };
@@ -110,9 +113,13 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
     const offArchive = subscribe("host_archive", (payload) => {
       const saved = readHost();
       if (!saved?.code || payload.code !== saved.code) return;
-      setArchive(payload.archive || []);
+      if (!payload) {
+        setResultError("Не вдалося отримати дані результатів.");
+      }
     });
     const offError = subscribe("room_error", (payload) => {
+      console.error("Group room error:", payload);
+      setResultError(payload.message || "Не вдалося змінити стан заняття.");
       setPending(false);
       setNote(payload.message || "Кімната не відповіла.");
       if (payload.message && payload.message.includes("не знайдено")) {
@@ -131,16 +138,57 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
     };
   }, []);
 
-  const activeScenario = scenarios.find((item) => item.id === (session?.scenarioId || scenarioId)) || null;
-  const step = activeScenario && room && (room.phase === "live" || room.phase === "done") ? activeScenario.steps[room.stepIndex] : null;
+  useEffect(() => {
+    const code = session?.code;
+    if (!code || !token) return undefined;
+    let active = true;
+    const refreshFromJson = async () => {
+      try {
+        const payload = await loadRoomResults(code, token);
+        if (!active) return;
+        if (!payload?.room) {
+          setResultError("");
+          return;
+        }
+        setResultError("");
+        setRoom((current) => current ? {
+          ...current,
+          participantCount: payload.participants?.length || payload.room.participantPeak || current.participantCount,
+          finishedCount: payload.room.finishedCount || (payload.participants || []).filter((participant) => participant.status === "completed").length,
+          phase: payload.room.phase || current.phase
+        } : current);
+      } catch (error) {
+        if (error.status === 404) {
+          setResultError("");
+          return;
+        }
+        console.error("Failed to load group session from JSON:", error);
+        setResultError(error.message || "Не вдалося прочитати дані сесії.");
+      }
+    };
+    refreshFromJson();
+    const interval = window.setInterval(refreshFromJson, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [session?.code, token]);
+
   const joinUrl = session ? buildJoinUrl(session.code, lanHost) : "";
-  const totalVotes = (room?.tallies || []).reduce((sum, item) => sum + item.count, 0);
+  const timerTotalSeconds = timerMode === "none" ? 0 : (timerMinutes * 60) + timerSeconds;
 
   function createRoom() {
     if (!scenarioId || pending) return;
     setPending(true);
     setNote("Створення кімнати…");
-    send("create_room", { scenarioId, groupName, token });
+    send("create_room", {
+      scenarioId,
+      groupName,
+      token,
+      timerMode,
+      totalDurationSeconds: timerMode === "whole_case" ? timerTotalSeconds : 0,
+      questionDurationSeconds: timerMode === "per_question" ? timerTotalSeconds : 0
+    });
   }
 
   async function copyLink() {
@@ -156,109 +204,128 @@ export default function GroupFacilitator({ scenarios, token, onBack }) {
     send("advance", { code: session.code, token: session.token });
   }
 
-  let actionLabel = "Відкрити перший крок";
-  if (room?.phase === "live") {
-    actionLabel = "Завершити заняття";
+  function finishRoom() {
+    if (!session || (room?.phase !== "live" && room?.phase !== "lobby")) return;
+    setResultError("");
+    setPending(true);
+    send("finish_room", { code: session.code, token: session.token });
+    setRoom((current) => current ? { ...current, phase: "done", endsAt: 0 } : current);
+    setNote("Заняття завершено. Підсумки доступні у «Статистиці занять».");
+    window.setTimeout(() => {
+      setPending(false);
+    }, 1500);
   }
+
+  let actionLabel = "Розпочати заняття";
   if (room?.phase === "done") actionLabel = "Заняття завершено";
 
   return (
-    <section>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Фаза викладача</p>
-          <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Групове заняття</h1>
-        </div>
-        <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
-      </div>
-      <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Оберіть кейс і назву групи. Якщо назву лишити порожньою, сесія збережеться за датою та часом. Відповіді анонімні: на екрані лише кількість і відсоток кожного варіанта, без імен.</p>
-      <div className="mt-5 flex flex-col gap-3 border border-zinc-800 bg-zinc-900/70 p-4 lg:flex-row lg:items-end">
-        <label className="flex flex-1 flex-col gap-2 text-sm text-zinc-300">
-          Кейс для кімнати
-          <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100">
-            {scenarios.map((item) => (
-              <option key={item.id} value={item.id}>{item.code} · {item.title}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-1 flex-col gap-2 text-sm text-zinc-300">
-          Назва групи
-          <input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={80} placeholder="Наприклад, група 22" className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
-        </label>
-        <button type="button" onClick={createRoom} disabled={pending || !scenarioId} className="border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl tracking-[0.1em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">
-          Створити кімнату
-        </button>
-      </div>
-      <p className={`mt-3 min-h-5 font-mono text-[11px] uppercase tracking-[0.14em] ${copied ? "text-olive-300" : "text-amber-500/90"}`} aria-live="polite">{note}</p>
-      {session && room ? (
-        <div className="mt-2 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="flex flex-col gap-4">
-            <div className="border border-zinc-800 bg-zinc-900/80 p-5">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-400">Код кімнати</p>
-                  <p className="mt-2 font-mono text-4xl tracking-[0.22em] text-zinc-50 sm:text-5xl">{session.code}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Підключені</p>
-                  <p className="font-display text-5xl leading-none text-zinc-50">{room.participantCount}</p>
-                </div>
-              </div>
-              <p className="mt-4 break-all font-mono text-xs text-zinc-400">{joinUrl}</p>
-              {room.phase === "live" && room.endsAt ? <div className="mt-4"><TimerReadout endsAt={room.endsAt} scope={room.timerScope} /></div> : null}
-              {room.phase === "live" && room.stepClockPaused ? <p className="mt-4 text-sm leading-6 text-olive-200">Час першого завдання вийшов. Слухачі з розгалуженням ідуть далі власними гілками, кожна зі своїм відліком.</p> : null}
-              {room.phase === "done" && room.timedOut ? <p className="mt-4 text-sm leading-6 text-amber-200">Час вийшов. Заняття закрито, слухачі бачать власний розбір відповідей.</p> : null}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button type="button" onClick={copyLink} className={`border px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] hover:border-olive-500 ${copied ? "border-olive-500 bg-olive-950 text-olive-200" : "border-zinc-600 text-zinc-200"}`}>{copied ? "Скопійовано" : "Копіювати посилання"}</button>
-                <button type="button" onClick={advance} disabled={room.phase === "done"} className="border border-olive-600 bg-olive-800 px-4 py-3 font-display text-xl tracking-[0.08em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">
-                  {actionLabel}
-                </button>
-              </div>
-            </div>
-            <article className="border border-zinc-800 bg-zinc-950/80 p-5">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                {room.phase === "lobby" ? "Очікування" : room.phase === "done" ? "Заняття завершено" : `Крок ${String(room.stepIndex + 1).padStart(2, "0")} / ${String(room.stepCount).padStart(2, "0")}`}
-              </p>
-              <h2 className="mt-2 font-display text-3xl tracking-wide text-zinc-50">{activeScenario?.title}</h2>
-              {activeScenario?.tree && room.phase === "live" ? <p className="mt-3 text-sm leading-7 text-olive-200">Це розгалужений кейс. Кожен слухач іде власною гілкою після першої ситуації. На екрані викладача лишається лише зведення першого питання, без імен.</p> : null}
-              {step ? <p className="mt-3 text-sm leading-7 text-zinc-300">{step.prompt}</p> : <p className="mt-3 text-sm leading-7 text-zinc-400">Відкрийте крок, коли аудиторія в кімнаті. До цього слухачі бачать екран очікування.</p>}
-            </article>
-            <div className="flex flex-col gap-3">
-              {(step?.options || []).map((option) => {
-                const tally = (room.tallies || []).find((item) => item.id === option.id);
-                const count = tally?.count || 0;
-                const pct = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
-                return (
-                  <div key={option.id} className="border border-zinc-800 bg-zinc-950 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm text-zinc-200">{option.title}</p>
-                      <p className="font-mono text-sm text-zinc-300">{pct}%</p>
-                    </div>
-                    <div className="mt-3 h-2 bg-zinc-800">
-                      <div className="bar-fill h-2 bg-olive-500" style={{ width: `${pct}%` }} />
-                    </div>
-                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">Відповідей: {count}</p>
-                  </div>
-                );
-              })}
-              {room.phase === "lobby" ? <p className="text-sm text-zinc-500">Діаграма з’явиться разом із першим кроком. Учасники в ній не підписані.</p> : null}
-            </div>
-            {archive.length > 0 ? (
-              <section className="border border-zinc-800 bg-zinc-900/70 p-5">
-                <h2 className="font-display text-3xl text-zinc-50">Зведення кроків</h2>
-                <p className="mt-2 text-sm text-zinc-400">Група «{room.groupLabel || "без назви"}». Частки без прив’язки до людей. Після завершення запис лягає в аналітику.</p>
-                <div className="mt-4"><ShareChart steps={archive} /></div>
-              </section>
-            ) : null}
+      <section>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">Фаза викладача</p>
+            <h1 className="mt-2 font-display text-4xl tracking-wide text-zinc-50 sm:text-5xl">Групове заняття</h1>
           </div>
-          <aside className="border border-zinc-800 bg-zinc-900 p-4 text-center xl:sticky xl:top-4 xl:self-start">
-            <div className="inline-block rounded bg-white p-4">
-              <QRCodeSVG value={joinUrl} size={220} bgColor="#ffffff" fgColor="#000000" level="H" includeMargin />
-            </div>
-            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">QR входу в кімнату</p>
-          </aside>
+          <button type="button" onClick={onBack} className="border border-zinc-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300 hover:border-olive-500">На головну</button>
         </div>
-      ) : null}
-    </section>
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-zinc-400">Оберіть кейс і назву групи. Якщо назву лишити порожньою, сесія збережеться за датою та часом. Відповіді анонімні: на екрані лише кількість і відсоток кожного варіанта, без імен.</p>
+        <div className="mt-5 grid gap-4 border border-zinc-800 bg-zinc-900/70 p-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid gap-4">
+            <label className="flex flex-col gap-2 text-sm text-zinc-300">
+              Кейс для кімнати
+              <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100">
+                {scenarios.map((item) => (
+                    <option key={item.id} value={item.id}>{item.code} · {item.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-zinc-300">
+              Назва групи
+              <input value={groupName} onChange={(event) => setGroupName(event.target.value)} maxLength={80} placeholder="Наприклад, група 22" className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
+            </label>
+            <fieldset className="grid gap-3 border border-zinc-700 p-4 text-sm text-zinc-300 sm:grid-cols-[minmax(180px,1fr)_auto] sm:items-end">
+              <legend className="px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">Обмеження часу</legend>
+              <label className="flex flex-col gap-2">
+                Режим
+                <select value={timerMode} onChange={(event) => setTimerMode(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100">
+                  <option value="none">Без обмеження часу</option>
+                  <option value="whole_case">На весь кейс</option>
+                  <option value="per_question">На кожне питання</option>
+                </select>
+              </label>
+              {timerMode !== "none" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex flex-col gap-2 text-xs text-zinc-400">
+                      Хвилини
+                      <input type="number" min="0" max="180" value={timerMinutes} onChange={(event) => setTimerMinutes(Math.max(0, Math.min(180, Number(event.target.value) || 0)))} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-zinc-100" />
+                    </label>
+                    <label className="flex flex-col gap-2 text-xs text-zinc-400">
+                      Секунди
+                      <input type="number" min="0" max="59" value={timerSeconds} onChange={(event) => setTimerSeconds(Math.max(0, Math.min(59, Number(event.target.value) || 0)))} className="border border-zinc-700 bg-zinc-950 px-3 py-3 text-base text-zinc-100" />
+                    </label>
+                  </div>
+              ) : null}
+            </fieldset>
+          </div>
+          <div className="flex items-stretch lg:min-h-56">
+            <button type="button" onClick={createRoom} disabled={pending || !scenarioId || (timerMode !== "none" && timerTotalSeconds < 1)} className="w-full border border-olive-600 bg-olive-800 px-5 py-6 font-display text-2xl tracking-[0.08em] text-olive-100 hover:border-olive-500 hover:bg-olive-700 disabled:opacity-50">
+              Створити кімнату
+            </button>
+          </div>
+        </div>
+        <p className={`mt-3 min-h-5 font-mono text-[11px] uppercase tracking-[0.14em] ${copied ? "text-olive-300" : "text-amber-500/90"}`} aria-live="polite">{note}</p>
+        {resultError ? (
+            <p className="mt-2 border border-amber-700 bg-amber-950 px-4 py-3 text-sm text-amber-200" role="alert">
+              Помилка: {resultError}
+            </p>
+        ) : null}
+        {session && room ? (
+            <div className="mt-2 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="flex flex-col gap-4">
+                <div className="border border-zinc-800 bg-zinc-900/80 p-5">
+                  <div className="flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-olive-400">Код кімнати</p>
+                      <p className="mt-2 font-mono text-4xl tracking-[0.22em] text-zinc-50 sm:text-5xl">{session.code}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Підключені</p>
+                      <p className="font-display text-5xl leading-none text-zinc-50">{room.activeCount ?? room.participantCount}</p>
+                      <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Завершили: {room.finishedCount || 0}</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 break-all font-mono text-xs text-zinc-400">{joinUrl}</p>
+                  {room.phase === "live" && room.endsAt ? <div className="mt-4"><TimerReadout endsAt={room.endsAt} scope={room.timerMode === "per_question" ? "step" : "whole_case"} /></div> : null}
+                  {room.phase === "live" && room.stepClockPaused ? <p className="mt-4 text-sm leading-6 text-olive-200">Час першого завдання вийшов. Слухачі з розгалуженням ідуть далі власними гілками, кожна зі своїм відліком.</p> : null}
+                  {room.phase === "done" && room.timedOut ? <p className="mt-4 text-sm leading-6 text-amber-200">Час вийшов. Заняття закрито, слухачі бачать власний розбір відповідей.</p> : null}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button type="button" onClick={copyLink} className={`border px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] hover:border-olive-500 ${copied ? "border-olive-500 bg-olive-950 text-olive-200" : "border-zinc-600 text-zinc-200"}`}>{copied ? "Скопійовано" : "Копіювати посилання"}</button>
+                    {room.phase === "lobby" ? (
+                        <>
+                          <button type="button" onClick={advance} className="border border-olive-600 bg-olive-800 px-4 py-3 font-display text-xl tracking-[0.08em] text-olive-100 hover:border-olive-500 hover:bg-olive-700">
+                            {actionLabel}
+                          </button>
+                          <button type="button" onClick={finishRoom} disabled={pending} className="border border-amber-700 bg-amber-950 px-4 py-3 font-display text-xl tracking-[0.08em] text-amber-100 hover:border-amber-500 disabled:opacity-50">
+                            Завершити заняття
+                          </button>
+                        </>
+                    ) : null}
+                    {room.phase === "live" ? (
+                        <button type="button" onClick={finishRoom} disabled={pending} className="border border-amber-700 bg-amber-950 px-4 py-3 font-display text-xl tracking-[0.08em] text-amber-100 hover:border-amber-500 disabled:opacity-50">
+                          Завершити заняття
+                        </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <aside className="border border-zinc-800 bg-zinc-900 p-4 text-center xl:sticky xl:top-4 xl:self-start">
+                <div className="inline-block rounded bg-white p-4">
+                  <QRCodeSVG value={joinUrl} size={220} bgColor="#ffffff" fgColor="#000000" level="H" includeMargin />
+                </div>
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">QR входу в кімнату</p>
+              </aside>
+            </div>
+        ) : null}
+      </section>
   );
 }

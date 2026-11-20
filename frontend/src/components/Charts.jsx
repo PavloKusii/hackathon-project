@@ -6,7 +6,9 @@ export function ShareChart({ steps }) {
     <div className="flex flex-col gap-4">
       {steps.map((step) => (
         <article key={`${step.stepId}-${step.stepIndex}`} className="border border-zinc-800 bg-zinc-950/70 p-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-400">Крок {String(step.stepIndex + 1).padStart(2, "0")}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-400">
+            Вузол{step.label ? ` ${step.label}` : ""} · пройшли: {step.participants || 0}
+          </p>
           <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-300">{step.prompt}</p>
           <div className="mt-3 flex h-3 overflow-hidden bg-zinc-800">
             {(step.options || []).map((option, index) => (

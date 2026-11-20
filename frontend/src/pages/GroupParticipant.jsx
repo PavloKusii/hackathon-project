@@ -53,13 +53,14 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginPending, setLoginPending] = useState(false);
-  const [scores, setScores] = useState(freshScores);
+  const [scores, setScores] = useState(() => ({ ...freshScores(), reputation: 100 }));
   const [history, setHistory] = useState([]);
   const [selfDone, setSelfDone] = useState(false);
   const [localEndsAt, setLocalEndsAt] = useState(0);
   const [bundle, setBundle] = useState(null);
   const appliedRef = useRef(new Set());
   const savedRef = useRef(false);
+  const completionSentRef = useRef(false);
 
   useEffect(() => {
     const offState = subscribe("room_state", (payload) => {
@@ -92,7 +93,11 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
       const code = activeRef.current;
       if (!code || (pass !== "guest" && pass !== "account")) return;
       setJoining(true);
-      send("join_room", { code, guestId: guestIdFor(code) });
+      send("join_room", {
+        code,
+        guestId: guestIdFor(code),
+        name: pass === "account" ? `Користувач ${user?.login || user?.email || "1"}` : "Гість"
+      });
     };
     const offConnect = onConnect(joinCurrent);
     const offFail = onConnectError(() => {
@@ -173,11 +178,11 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   const picked = voted && liveStep ? (liveStep.options || []).find((item) => item.id === choice.optionId) : null;
   const pickedRef = useRef(null);
   pickedRef.current = picked;
-  const stepMode = (scenario?.timeMode === "step" || room?.timerScope === "step") && Number(scenario?.timeLimitSeconds) > 0;
-  const onPersonal = Boolean(stepMode && branching && liveStep && scenario?.tree && liveStep.id !== scenario.tree.id && room?.phase === "live" && !selfDone);
+  const stepMode = room?.timerMode === "per_question" && Number(room?.questionDurationSeconds) > 0;
+  const onPersonal = false;
   const sharedEnds = Number(room?.endsAt) || 0;
   const endsAt = onPersonal ? localEndsAt : sharedEnds;
-  const timerScope = onPersonal || room?.timerScope === "step" ? "step" : "case";
+  const timerScope = room?.timerMode === "per_question" ? "step" : "whole_case";
   const finished = room?.phase === "done" || selfDone;
 
   useEffect(() => {
@@ -185,7 +190,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
       setLocalEndsAt(0);
       return undefined;
     }
-    const ends = Date.now() + Number(scenario.timeLimitSeconds) * 1000;
+    const ends = Date.now() + Number(room.timeLimitSeconds || scenario.timeLimitSeconds) * 1000;
     setLocalEndsAt(ends);
     const id = window.setTimeout(() => {
       const latest = pickedRef.current;
@@ -194,6 +199,31 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
         setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
         return;
       }
+      if (!branching && latest?.nextStepId) {
+        const next = scenario.steps.find((item) => item.id === latest.nextStepId);
+        if (next) {
+          setPersonalStepId(next.id);
+          setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+          send("participant_timeout", { code: room.code, guestId: guestIdFor(room.code), stepId: liveStep.id, final: false });
+          return;
+        }
+      }
+      if (!branching && !latest) {
+        const currentIndex = scenario.steps.findIndex((item) => item.id === liveStep.id);
+        const next = scenario.steps[currentIndex + 1];
+        if (next) {
+          setPersonalStepId(next.id);
+          setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+          send("participant_timeout", { code: room.code, guestId: guestIdFor(room.code), stepId: liveStep.id, final: false });
+          return;
+        }
+      }
+      send("participant_timeout", {
+        code: room.code,
+        guestId: guestIdFor(room.code),
+        stepId: liveStep.id,
+        final: !latest?.next
+      });
       setSelfDone(true);
     }, Math.max(0, ends - Date.now()));
     return () => window.clearTimeout(id);
@@ -203,8 +233,28 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
     if (room?.phase !== "live" || selfDone || !sharedEnds || onPersonal) return undefined;
     const wait = Math.max(0, sharedEnds - Date.now());
     const id = window.setTimeout(() => {
-      if (room.timerScope === "step" && !branching && room.stepIndex < (room.stepCount || 1) - 1) return;
-      if (room.timerScope === "step" && branching) return;
+      if (room.timerMode === "per_question") {
+        send("participant_timeout", { code: room.code, guestId: guestIdFor(room.code), stepId: liveStep?.id || "", final: !picked && !branching });
+        if (branching) {
+          if (picked?.next) setBranchId(picked.next.id);
+          else setSelfDone(true);
+        } else if (picked?.nextStepId) {
+          const next = scenario.steps.find((item) => item.id === picked.nextStepId);
+          if (next) {
+            setPersonalStepId(next.id);
+            setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+          } else setSelfDone(true);
+        } else {
+          const currentIndex = scenario.steps.findIndex((item) => item.id === liveStep?.id);
+          const next = scenario.steps[currentIndex + 1];
+          if (next) {
+            setPersonalStepId(next.id);
+            setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+          } else setSelfDone(true);
+        }
+        return;
+      }
+      send("participant_timeout", { code: room.code, guestId: guestIdFor(room.code), stepId: liveStep?.id || "", final: true });
       setSelfDone(true);
     }, wait);
     return () => window.clearTimeout(id);
@@ -231,6 +281,7 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
       ["integrity", "trust", "effectiveness"].forEach((metric) => {
         next[metric] = clampScore((next[metric] || 0) + Number(picked.deltas?.[metric] || 0));
       });
+      next.reputation = clampScore((next.reputation ?? next.trust ?? 100) + Number(picked.deltas?.reputation ?? picked.deltas?.trust ?? 0));
       return next;
     });
     const best = Math.max(...(liveStep.options || []).map((item) => Number(item.deltas?.integrity || 0)));
@@ -246,9 +297,90 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
   }, [voted, picked, room, choice.optionId, liveStep]);
 
   useEffect(() => {
+    if (!room?.code) return;
+    if (selfDone && !completionSentRef.current) {
+      completionSentRef.current = true;
+      send("participant_complete", {
+        code: room.code,
+        guestId: guestIdFor(room.code),
+        name: pass === "account" ? `Користувач ${user?.login || user?.email || "1"}` : "Гість",
+        answers: history.map((entry) => ({
+          stepId: entry.stepId,
+          prompt: entry.prompt,
+          optionId: entry.option.id,
+          optionTitle: entry.option.title,
+          deltas: entry.option.deltas || {}
+        })),
+        scores: {
+          integrity: scores.integrity,
+          trust: scores.trust,
+          reputation: scores.reputation ?? scores.trust,
+          effectiveness: scores.effectiveness
+        },
+        routeId: branchId || personalStepId || liveStep?.id || "",
+        routeLabel: branching
+          ? (branchId ? (findNode(scenario.tree, branchId)?.label || branchId) : (scenario?.tree?.label || "Гілка 1"))
+          : "Лінійний маршрут"
+      });
+    }
+    send("participant_snapshot", {
+      code: room.code,
+      guestId: guestIdFor(room.code),
+      name: pass === "account" ? `Користувач ${user?.login || user?.email || "1"}` : "Гість",
+      history: history.map((entry) => ({
+        stepId: entry.stepId,
+        optionId: entry.option.id,
+        prompt: entry.prompt,
+        optionTitle: entry.option.title,
+        deltas: entry.option.deltas || {},
+        timedOut: false
+      })),
+      routeId: branchId || personalStepId || liveStep?.id || "",
+      routeLabel: branching
+        ? (branchId ? (findNode(scenario.tree, branchId)?.label || branchId) : (scenario.tree?.label || "Гілка 1"))
+        : "Лінійний маршрут",
+      scores: {
+        integrity: scores.integrity,
+        trust: scores.trust,
+        reputation: scores.reputation ?? scores.trust,
+        effectiveness: scores.effectiveness
+      },
+      completed: selfDone,
+      finishedAt: selfDone ? Date.now() : 0
+    });
+  }, [history, scores, room?.code, pass, user, branchId, personalStepId, liveStep?.id, selfDone, branching, scenario]);
+
+  useEffect(() => {
     if (!voted) return;
     document.getElementById("feedback")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [voted, room?.stepIndex, choice.optionId]);
+
+  useEffect(() => {
+    if (!room?.allAnswered || !voted || !picked || selfDone) return;
+    if (branching) {
+      if (picked.next) continueBranch();
+      else setSelfDone(true);
+      return;
+    }
+    if (picked.nextStepId) {
+      const next = scenario.steps.find((item) => item.id === picked.nextStepId);
+      if (next) {
+        setPersonalStepId(next.id);
+        setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+        send("step_answered", { code: room.code, guestId: guestIdFor(room.code), stepId: next.id });
+        return;
+      }
+    }
+    const currentIndex = scenario.steps.findIndex((item) => item.id === liveStep?.id);
+    const next = scenario.steps[currentIndex + 1];
+    if (next) {
+      setPersonalStepId(next.id);
+      setChoice({ stepIndex: room.stepIndex, nodeId: "", optionId: "" });
+      send("step_answered", { code: room.code, guestId: guestIdFor(room.code), stepId: next.id });
+    } else {
+      setSelfDone(true);
+    }
+  }, [room?.allAnswered, room?.stepAdvanced, voted, picked, selfDone, branching, scenario, room]);
 
   useEffect(() => {
     if (pass !== "account" || !finished || !token || !history.length || savedRef.current || !onSave) return;
@@ -260,14 +392,61 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
     });
   }, [pass, finished, room?.phase, room?.scenarioId, token, history, onSave]);
 
+  function completeParticipant() {
+    if (!room) return;
+    completionSentRef.current = true;
+    send("participant_complete", {
+      code: room.code,
+      guestId: guestIdFor(room.code),
+      name: pass === "account" ? `Користувач ${user?.login || user?.email || "1"}` : "Гість",
+      answers: history.map((entry) => ({
+        stepId: entry.stepId,
+        prompt: entry.prompt,
+        optionId: entry.option.id,
+        optionTitle: entry.option.title,
+        deltas: entry.option.deltas || {}
+      })),
+      scores,
+      routeId: branchId || personalStepId || liveStep?.id || "",
+      routeLabel: branching
+        ? (branchId ? (findNode(scenario.tree, branchId)?.label || branchId) : (scenario?.tree?.label || "Гілка 1"))
+        : "Лінійний маршрут"
+    });
+    setSelfDone(true);
+  }
+
   function vote(optionId) {
     if (!room || room.phase !== "live" || voted || !liveStep) return;
     setChoice({ stepIndex: room.stepIndex, nodeId: liveStep.id, optionId });
+    const selectedOption = (liveStep.options || []).find((item) => item.id === optionId);
+    const nextScores = { ...scores };
+    if (selectedOption) {
+      ["integrity", "trust", "effectiveness"].forEach((metric) => {
+        nextScores[metric] = clampScore((nextScores[metric] || 0) + Number(selectedOption.deltas?.[metric] || 0));
+      });
+      nextScores.reputation = clampScore(
+        (nextScores.reputation ?? nextScores.trust ?? 100)
+        + Number(selectedOption.deltas?.reputation ?? selectedOption.deltas?.trust ?? 0)
+      );
+    }
     send("submit_vote", {
       code: room.code,
       guestId: guestIdFor(room.code),
       stepId: liveStep.id,
-      optionId
+      optionId,
+      name: pass === "account" ? `Користувач ${user?.login || user?.email || "1"}` : "Гість",
+      scores: nextScores,
+      routeId: branchId || personalStepId || liveStep.id,
+      routeLabel: branching
+        ? (branchId ? (findNode(scenario.tree, branchId)?.label || branchId) : (liveStep.label || "Гілка 1"))
+        : "Лінійний маршрут",
+      answers: [...history, {
+        stepId: liveStep.id,
+        prompt: liveStep.prompt,
+        optionId,
+        optionTitle: selectedOption?.title || "",
+        deltas: selectedOption?.deltas || {}
+      }]
     });
   }
 
@@ -411,14 +590,28 @@ export default function GroupParticipant({ scenarios, initialCode, token, user, 
                   {branching ? (
                     <>
                       <FeedbackPanel option={picked} last={!picked.next} onNext={picked.next ? continueBranch : undefined} />
-                      {!picked.next ? <p className="mt-3 text-sm leading-6 text-zinc-400">Вашу гілку пройдено. Загальний підсумок відкриється, коли організатор завершить заняття.</p> : null}
+                      {!picked.next ? (
+                        <p className="mt-3 text-sm leading-6 text-zinc-400">Вашу гілку пройдено.</p>
+                      ) : null}
+                      {!picked.next ? (
+                        <button type="button" onClick={completeParticipant} className="mt-3 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl text-olive-100">
+                          Завершити та переглянути підсумок
+                        </button>
+                      ) : null}
                     </>
                   ) : (
-                    <FeedbackPanel
-                      option={picked}
-                      last={Boolean(picked.end) || !picked.nextStepId}
-                      onNext={continueLinear}
-                    />
+                    <>
+                      <FeedbackPanel
+                        option={picked}
+                        last={Boolean(picked.end) || !picked.nextStepId}
+                        onNext={picked.nextStepId ? continueLinear : undefined}
+                      />
+                      {(picked.end || !picked.nextStepId) ? (
+                        <button type="button" onClick={completeParticipant} className="mt-3 border border-olive-600 bg-olive-800 px-5 py-3 font-display text-xl text-olive-100">
+                          Завершити та переглянути підсумок
+                        </button>
+                      ) : null}
+                    </>
                   )}
                 </div>
               ) : null}
