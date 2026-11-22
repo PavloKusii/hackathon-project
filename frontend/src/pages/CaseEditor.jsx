@@ -510,7 +510,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
   }
 
   return (
-    <section className="mx-auto w-full border border-zinc-800 bg-zinc-900/30 p-3 sm:p-5 lg:p-7">
+    <section className={`w-full transition-all duration-300 ${draft && selected ? "lg:pr-[25rem]" : ""}`}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-olive-400">{initial ? "Редагування" : "Новий кейс"}</p>
@@ -555,7 +555,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
       </p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={saveCase}>
         <div className="grid gap-4 border border-zinc-800 bg-zinc-900/80 p-5 md:grid-cols-2">
-          <label className="text-sm text-zinc-300">Тема
+          <label className="text-sm text-zinc-300 md:col-span-2">Тема
             <input required value={form.field} onChange={(event) => patch({ field: event.target.value })} className="mt-2 w-full border border-zinc-700 bg-zinc-950 px-3 py-3 text-zinc-100" />
           </label>
           <label className="text-sm text-zinc-300 md:col-span-2">Назва
@@ -622,7 +622,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         </div>
 
         {branching && form.tree ? (
-          <section className={`min-w-0 ${draft ? "lg:pr-[38rem]" : ""}`}>
+          <section className="min-w-0 w-full">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-display text-3xl text-zinc-50">Схема сценарію</h2>
@@ -652,7 +652,7 @@ export default function CaseEditor({ initial, role, pending, error, success, dra
         ) : null}
 
         {branching && draft && selected ? (
-          <aside className="fixed top-[115px] bottom-0 right-0 z-40 flex h-[calc(100vh-61px)] w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
+          <aside className="fixed top-[115px] bottom-0 right-0 z-40 flex h-[calc(100vh-115px)] w-full flex-col border-l border-zinc-700 bg-zinc-950 shadow-2xl sm:w-[min(36rem,100vw)]">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-olive-300">Питання {selected.label}</p>
